@@ -1,0 +1,12 @@
+.env
+*.log
+*.pyc
+__pycache__/
+
+backend/.env
+backend/jiujitsu.db
+backend/__pycache__/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
