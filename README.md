@@ -39,7 +39,46 @@ set DATABASE_URL=postgresql://usuario:senha@host:5432/banco
 Em provedores como Supabase, copie a connection string PostgreSQL e use como `DATABASE_URL`.
 Quando essa variável estiver configurada, o back-end cria as tabelas automaticamente no PostgreSQL.
 
-## Deploy gratuito
+## Executável desktop (rodar no PC sem instalar nada)
+
+É possível empacotar o sistema em um único arquivo `.exe` para Windows. Ao abrir, o servidor sobe automaticamente e o navegador abre na tela inicial.
+
+### Pré-requisitos (instalar uma vez no PC Windows)
+
+- [Node.js](https://nodejs.org) — versão LTS
+- [Python](https://www.python.org) — versão 3.11 ou superior (marcar "Add to PATH" na instalação)
+
+### Gerar o .exe
+
+Com os pré-requisitos instalados, dê dois cliques em **`build-windows.bat`** na raiz do projeto. O script vai:
+
+1. Compilar o front-end Angular
+2. Copiar os arquivos para dentro do back-end
+3. Instalar as dependências Python
+4. Gerar o executável com PyInstaller
+
+O arquivo final estará em:
+
+```text
+backend\dist\Academia CTC.exe
+```
+
+O processo leva entre 3 e 5 minutos na primeira execução.
+
+### Usar o .exe
+
+Basta abrir `Academia CTC.exe`. O navegador abrirá automaticamente em `http://localhost:8000`.
+
+O banco de dados (`jiujitsu.db`) é criado na mesma pasta do `.exe` e persiste entre execuções. Para fazer backup, basta copiar esse arquivo.
+
+### Testar o modo desktop no Mac (desenvolvimento)
+
+```bash
+./build-desktop.sh
+cd backend && python launcher.py
+```
+
+## Deploy gratuito na nuvem
 
 Para publicar uma versão de apresentação usando Vercel, Render e Supabase, veja:
 

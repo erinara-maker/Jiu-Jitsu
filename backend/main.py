@@ -5,6 +5,7 @@ from pathlib import Path
 from sqlite3 import Row, connect as sqlite_connect
 from typing import Annotated
 import asyncio
+import sys
 import time
 
 import bcrypt
@@ -13,6 +14,7 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 try:
@@ -25,7 +27,17 @@ except ImportError:  # Keeps local SQLite development working before PostgreSQL 
 
 load_dotenv()
 
-DATABASE_PATH = Path(__file__).with_name("jiujitsu.db")
+# When packaged as a PyInstaller .exe, use the folder next to the .exe for
+# persistent data (database). Extracted bundle files live in sys._MEIPASS.
+if getattr(sys, "frozen", False):
+    _APP_DIR = Path(sys.executable).parent
+    _BUNDLE_DIR = Path(sys._MEIPASS)
+else:
+    _APP_DIR = Path(__file__).parent
+    _BUNDLE_DIR = _APP_DIR
+
+DATABASE_PATH = _APP_DIR / "jiujitsu.db"
+_STATIC_DIR = _BUNDLE_DIR / "static"
 DATABASE_URL = getenv("DATABASE_URL", "")
 USE_POSTGRES = DATABASE_URL.startswith(("postgres://", "postgresql://"))
 APP_ENV = getenv("APP_ENV", "development").lower()
@@ -918,8 +930,10 @@ async def create_provider_pix_payment(student: Row, amount: float) -> dict:
     }
 
 
-@app.get("/")
-def health_check() -> dict:
+@app.get("/", include_in_schema=False, response_model=None)
+async def root():
+    if _STATIC_DIR.exists():
+        return FileResponse(_STATIC_DIR / "index.html")
     return {
         "message": "API do sistema de Jiu-Jitsu funcionando",
         "academy_whatsapp": ACADEMY_WHATSAPP_DISPLAY,
@@ -1532,3 +1546,13 @@ async def payment_webhook(request: Request) -> dict:
                         )
 
     return {"message": "Webhook processado."}
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str) -> FileResponse:
+    if not _STATIC_DIR.exists():
+        raise HTTPException(status_code=404, detail="Not found.")
+    candidate = _STATIC_DIR / full_path
+    if candidate.is_file():
+        return FileResponse(candidate)
+    return FileResponse(_STATIC_DIR / "index.html")
