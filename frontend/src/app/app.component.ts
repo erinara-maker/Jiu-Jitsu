@@ -11,8 +11,8 @@ interface TrainingDay {
 }
 
 interface StudentProfile {
+  id: number;
   student_number: string;
-  username: string;
   phone: string;
   full_name: string;
   age: number;
@@ -49,12 +49,12 @@ interface StudentProfile {
 
 interface LoginResponse {
   access_token: string;
-  role: 'student' | 'admin';
+  role: 'admin';
 }
 
 interface AdminStudent {
+  id: number;
   student_number: string;
-  username: string;
   phone: string;
   full_name: string;
   age: number;
@@ -71,7 +71,6 @@ interface AdminStudent {
 interface AdminPayment {
   id: number;
   full_name: string;
-  username: string;
   amount: number;
   status: string;
   method: string;
@@ -144,9 +143,7 @@ export class AppComponent {
   };
 
   registerData = {
-    username: '',
     phone: '',
-    password: '',
     full_name: '',
     age: 16,
     birth_date: '',
@@ -229,8 +226,6 @@ export class AppComponent {
   constructor(private http: HttpClient) {
     if (this.token && this.userRole === 'admin') {
       this.loadAdmin();
-    } else if (this.token) {
-      this.loadProfile();
     }
   }
 
@@ -249,8 +244,7 @@ export class AppComponent {
       training_days
     }).subscribe({
       next: () => {
-        this.message = 'Cadastro criado. Agora faça login com seu usuário e senha.';
-        this.loginData.username = this.registerData.username;
+        this.message = 'Cadastro criado com sucesso.';
       },
       error: (error) => this.message = error.error?.detail || 'Não foi possível cadastrar.'
     });
@@ -268,26 +262,9 @@ export class AppComponent {
         this.userRole = response.role;
         localStorage.setItem('jj_token', this.token);
         localStorage.setItem('jj_role', response.role);
-        if (response.role === 'admin') {
-          this.loadAdmin();
-        } else {
-          this.loadProfile();
-        }
+        this.loadAdmin();
       },
       error: (error) => this.message = error.error?.detail || 'Login invalido.'
-    });
-  }
-
-  loadProfile(): void {
-    this.http.get<StudentProfile>(`${this.apiUrl}/me`, {
-      headers: { Authorization: `Bearer ${this.token}` }
-    }).subscribe({
-      next: (profile) => {
-        this.profile = profile;
-        this.academyWhatsapp = profile.academy_whatsapp || this.academyWhatsapp;
-        this.academyWhatsappUrl = profile.academy_whatsapp_url || this.academyWhatsappUrl;
-      },
-      error: () => this.logout()
     });
   }
 
@@ -406,8 +383,38 @@ export class AppComponent {
     this.selectedTeacher = undefined;
   }
 
-  openStudentDetails(username: string): void {
-    this.http.get<StudentProfile>(`${this.apiUrl}/admin/students/${username}`, {
+  shouldShowGuardian(): boolean {
+    return this.calculatedAge() < 18;
+  }
+
+  syncAgeFromBirthDate(): void {
+    const age = this.calculatedAge();
+    if (age >= 0) {
+      this.registerData.age = age;
+    }
+  }
+
+  private calculatedAge(): number {
+    const birthDate = this.registerData.birth_date;
+    if (birthDate) {
+      const birth = new Date(`${birthDate}T00:00:00`);
+      if (!Number.isNaN(birth.getTime())) {
+        const today = new Date();
+        let age = today.getFullYear() - birth.getFullYear();
+        const hadBirthday =
+          today.getMonth() > birth.getMonth() ||
+          (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+        if (!hadBirthday) {
+          age -= 1;
+        }
+        return age;
+      }
+    }
+    return Number(this.registerData.age);
+  }
+
+  openStudentDetails(studentId: number): void {
+    this.http.get<StudentProfile>(`${this.apiUrl}/admin/students/${studentId}`, {
       headers: { Authorization: `Bearer ${this.token}` }
     }).subscribe({
       next: (student) => this.selectedStudent = student,
@@ -424,7 +431,7 @@ export class AppComponent {
       return;
     }
 
-    this.http.patch(`${this.apiUrl}/admin/students/${this.selectedStudent.username}/admin-info`, {
+    this.http.patch(`${this.apiUrl}/admin/students/${this.selectedStudent.id}/admin-info`, {
       authorization_signed: this.selectedStudent.authorization_signed,
       scholarship_type: this.selectedStudent.scholarship_type
     }, {
@@ -432,7 +439,7 @@ export class AppComponent {
     }).subscribe({
       next: () => {
         this.message = 'Dados do aluno atualizados.';
-        this.openStudentDetails(this.selectedStudent!.username);
+        this.openStudentDetails(this.selectedStudent!.id);
         this.loadAdmin();
       },
       error: (error) => this.message = error.error?.detail || 'Não foi possível atualizar o aluno.'
@@ -445,7 +452,7 @@ export class AppComponent {
       return;
     }
 
-    this.http.patch(`${this.apiUrl}/admin/students/${student.username}/dropout`, {}, {
+    this.http.patch(`${this.apiUrl}/admin/students/${student.id}/dropout`, {}, {
       headers: { Authorization: `Bearer ${this.token}` }
     }).subscribe({
       next: () => {
@@ -458,7 +465,7 @@ export class AppComponent {
   }
 
   reactivateStudent(student: AdminStudent): void {
-    this.http.patch(`${this.apiUrl}/admin/students/${student.username}/reactivate`, {}, {
+    this.http.patch(`${this.apiUrl}/admin/students/${student.id}/reactivate`, {}, {
       headers: { Authorization: `Bearer ${this.token}` }
     }).subscribe({
       next: () => {
@@ -577,12 +584,12 @@ export class AppComponent {
       return;
     }
 
-    this.http.delete(`${this.apiUrl}/admin/students/${student.username}`, {
+    this.http.delete(`${this.apiUrl}/admin/students/${student.id}`, {
       headers: { Authorization: `Bearer ${this.token}` }
     }).subscribe({
       next: () => {
         this.message = 'Aluno excluído com sucesso.';
-        if (this.selectedStudent?.username === student.username) {
+        if (this.selectedStudent?.id === student.id) {
           this.closeStudentDetails();
         }
         this.loadAdmin();

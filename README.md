@@ -4,8 +4,8 @@ Projeto inicial com:
 
 - Front-end em Angular
 - Back-end em Python com FastAPI
-- Cadastro de aluno com usuário, celular, modalidade e dados da ficha impressa
-- Perfil com número do aluno, nome completo, idade, calendário de treino e financeiro
+- Cadastro local de aluno com celular, modalidade e dados da ficha impressa
+- Administração com número do aluno, nome completo, idade, calendário de treino e financeiro
 - Pagamento via Pix com chave configurada no back-end
 - Lembrete de pagamento por WhatsApp em modo demonstracao
 - Área de professores com termo assinado, bolsa/desconto, professores e desistentes
@@ -106,10 +106,9 @@ http://localhost:4200
 
 1. Abra `http://localhost:4200`.
 2. Crie um cadastro de aluno.
-3. Faça login com o nome de usuário e senha.
-4. Veja o perfil, calendário e financeiro.
-5. Copie a chave Pix na área financeira.
-6. No dia de vencimento, o back-end envia automaticamente um lembrete por WhatsApp se a mensalidade estiver pendente.
+3. Entre na área administrativa com o usuário professor.
+4. Veja o cadastro, calendário e financeiro do aluno.
+5. No dia de vencimento, o back-end prepara/enviar lembrete por WhatsApp se a mensalidade estiver pendente.
 
 ## Área administrativa
 

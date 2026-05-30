@@ -19,18 +19,8 @@
       <h2>Cadastro do aluno</h2>
 
       <label>
-        Usuário para login
-        <input name="username" [(ngModel)]="registerData.username" required>
-      </label>
-
-      <label>
         Celular com DDD
         <input name="phone" type="tel" [(ngModel)]="registerData.phone" placeholder="85999999999" required>
-      </label>
-
-      <label>
-        Senha
-        <input name="password" type="password" [(ngModel)]="registerData.password" required>
       </label>
 
       <label>
@@ -45,7 +35,7 @@
         </label>
         <label>
           Data de nascimento
-          <input name="birth_date" type="date" [(ngModel)]="registerData.birth_date">
+          <input name="birth_date" type="date" [(ngModel)]="registerData.birth_date" (change)="syncAgeFromBirthDate()">
         </label>
       </div>
 
@@ -94,7 +84,7 @@
         </label>
       </div>
 
-      <div class="subsection" *ngIf="registerData.age < 18">
+      <div class="subsection" *ngIf="shouldShowGuardian()">
         <h3>Informações do responsável</h3>
         <label>
           Nome do responsável
@@ -169,7 +159,7 @@
     </form>
 
     <form class="panel compact" (ngSubmit)="login()">
-      <h2>Login</h2>
+      <h2>Acesso administrativo</h2>
       <label>
         Usuário
         <input name="login_username" [(ngModel)]="loginData.username" required>
@@ -178,7 +168,7 @@
         Senha
         <input name="login_password" type="password" [(ngModel)]="loginData.password" required>
       </label>
-      <p class="hint">Use o mesmo acesso para aluno ou equipe. O sistema abre a área correta automaticamente.</p>
+      <p class="hint">Acesso exclusivo da equipe.</p>
       <button type="submit">Entrar</button>
     </form>
   </section>
@@ -216,7 +206,7 @@
             <tr *ngFor="let student of adminStudents">
               <td>{{ student.student_number }}</td>
               <td>
-                <button class="link-button" type="button" (click)="openStudentDetails(student.username)">
+                <button class="link-button" type="button" (click)="openStudentDetails(student.id)">
                   {{ student.full_name }}
                 </button>
               </td>
@@ -251,7 +241,6 @@
 
       <div class="detail-grid">
         <p><strong>N.:</strong> {{ selectedStudent.student_number }}</p>
-          <p><strong>Usuário:</strong> {{ selectedStudent.username }}</p>
         <p><strong>Celular/WhatsApp:</strong> {{ displayPhone(selectedStudent.phone) }}</p>
         <p><strong>Idade:</strong> {{ selectedStudent.age }} anos</p>
         <p><strong>Data de nascimento:</strong> {{ selectedStudent.birth_date || 'Não informada' }}</p>
@@ -626,7 +615,6 @@
       <article class="panel">
         <h3>Dados do aluno</h3>
         <p><strong>N.:</strong> {{ profile.student_number }}</p>
-          <p><strong>Usuário:</strong> {{ profile.username }}</p>
         <p><strong>Celular:</strong> {{ profile.phone }}</p>
         <p><strong>Idade:</strong> {{ profile.age }} anos</p>
         <p><strong>Modalidade:</strong> {{ formatModality(profile.modality) }}</p>

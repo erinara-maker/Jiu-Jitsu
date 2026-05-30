@@ -41,13 +41,13 @@ if %errorlevel% neq 0 ( echo ERRO ao copiar arquivos & pause & exit /b 1 )
 echo.
 echo [4/5] Instalando dependencias Python...
 cd backend
-pip install -r requirements.txt
-pip install pyinstaller
+python -m pip install -r requirements.txt
+python -m pip install pyinstaller
 if %errorlevel% neq 0 ( echo ERRO no pip install & pause & exit /b 1 )
 
 echo.
 echo [5/5] Gerando o executavel...
-pyinstaller jiujitsu.spec --clean
+python -m PyInstaller jiujitsu.spec --clean
 if %errorlevel% neq 0 ( echo ERRO no PyInstaller & pause & exit /b 1 )
 cd ..
 

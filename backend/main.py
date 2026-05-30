@@ -125,9 +125,7 @@ class TrainingDay(BaseModel):
 
 
 class StudentCreate(BaseModel):
-    username: str = Field(min_length=3)
     phone: str = Field(min_length=10)
-    password: str = Field(min_length=6)
     full_name: str = Field(min_length=3)
     age: int = Field(ge=4, le=100)
     birth_date: str = ""
@@ -313,12 +311,6 @@ def decode_token(authorization: Annotated[str | None, Header()] = None) -> dict:
         raise HTTPException(status_code=401, detail="Token invalido ou expirado.") from exc
 
 
-def require_student(payload: Annotated[dict, Depends(decode_token)]) -> dict:
-    if payload.get("role") != "student":
-        raise HTTPException(status_code=403, detail="Acesso permitido apenas para alunos.")
-    return payload
-
-
 def require_admin(payload: Annotated[dict, Depends(decode_token)]) -> dict:
     if payload.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Acesso permitido apenas para professores.")
@@ -331,10 +323,8 @@ def init_database() -> None:
             schema_sql = """
             CREATE TABLE IF NOT EXISTS students (
                 id SERIAL PRIMARY KEY,
-                username TEXT NOT NULL UNIQUE,
                 phone TEXT NOT NULL UNIQUE,
                 email TEXT UNIQUE,
-                password_hash TEXT NOT NULL,
                 full_name TEXT NOT NULL,
                 age INTEGER NOT NULL,
                 birth_date TEXT,
@@ -439,10 +429,8 @@ def init_database() -> None:
             schema_sql = """
             CREATE TABLE IF NOT EXISTS students (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
                 phone TEXT NOT NULL UNIQUE,
                 email TEXT UNIQUE,
-                password_hash TEXT NOT NULL,
                 full_name TEXT NOT NULL,
                 age INTEGER NOT NULL,
                 birth_date TEXT,
@@ -574,6 +562,58 @@ def init_database() -> None:
                 connection.execute(
                     f"ALTER TABLE students ADD COLUMN {column_name} {column_type}{default_sql}"
                 )
+        columns = table_columns(connection, "students")
+        if "username" in columns or "password_hash" in columns:
+            if USE_POSTGRES:
+                connection.execute("ALTER TABLE students DROP COLUMN IF EXISTS username")
+                connection.execute("ALTER TABLE students DROP COLUMN IF EXISTS password_hash")
+            else:
+                connection.execute("PRAGMA foreign_keys=off")
+                connection.executescript(
+                    """
+                    CREATE TABLE students_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        phone TEXT NOT NULL UNIQUE,
+                        email TEXT UNIQUE,
+                        full_name TEXT NOT NULL,
+                        age INTEGER NOT NULL,
+                        birth_date TEXT,
+                        cpf TEXT,
+                        address TEXT,
+                        neighborhood TEXT,
+                        city TEXT,
+                        modality TEXT NOT NULL DEFAULT 'kid',
+                        jiu_jitsu_start_date TEXT,
+                        monthly_fee REAL NOT NULL,
+                        payment_day INTEGER NOT NULL,
+                        payment_status TEXT NOT NULL DEFAULT 'pendente',
+                        authorization_signed TEXT NOT NULL DEFAULT 'nao',
+                        scholarship_type TEXT NOT NULL DEFAULT 'nao',
+                        student_status TEXT NOT NULL DEFAULT 'ativo',
+                        dropout_date TEXT,
+                        created_at TEXT NOT NULL
+                    );
+
+                    INSERT INTO students_new (
+                        id, phone, email, full_name, age,
+                        birth_date, cpf, address, neighborhood, city, modality,
+                        jiu_jitsu_start_date, monthly_fee,
+                        payment_day, payment_status, authorization_signed,
+                        scholarship_type, student_status, dropout_date, created_at
+                    )
+                    SELECT
+                        id, phone, email, full_name, age,
+                        birth_date, cpf, address, neighborhood, city, modality,
+                        jiu_jitsu_start_date, monthly_fee,
+                        payment_day, payment_status, authorization_signed,
+                        scholarship_type, student_status, dropout_date, created_at
+                    FROM students;
+
+                    DROP TABLE students;
+                    ALTER TABLE students_new RENAME TO students;
+                    PRAGMA foreign_keys=on;
+                    """
+                )
         guardian_columns = table_columns(connection, "guardians")
         if "secondary_phone" not in guardian_columns:
             connection.execute("ALTER TABLE guardians ADD COLUMN secondary_phone TEXT")
@@ -616,11 +656,11 @@ async def shutdown() -> None:
         reminder_task.cancel()
 
 
-def fetch_student(username: str) -> Row:
+def fetch_student(student_id: int) -> Row:
     with get_connection() as connection:
         student = connection.execute(
-            "SELECT * FROM students WHERE username = ?",
-            (username,),
+            "SELECT * FROM students WHERE id = ?",
+            (student_id,),
         ).fetchone()
     if not student:
         raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
@@ -655,8 +695,8 @@ def public_student(student: Row) -> dict:
             (student["id"],),
         ).fetchone()
     return {
+        "id": student["id"],
         "student_number": f"{student['id']:03d}",
-        "username": student["username"],
         "phone": phone_for_display(student["phone"]),
         "full_name": student["full_name"],
         "age": student["age"],
@@ -904,7 +944,7 @@ async def create_provider_pix_payment(student: Row, amount: float) -> dict:
     }
     headers = {
         "Authorization": f"Bearer {MERCADO_PAGO_ACCESS_TOKEN}",
-        "X-Idempotency-Key": f"{student['username']}-{datetime.now(timezone.utc).timestamp()}",
+        "X-Idempotency-Key": f"{student['id']}-{datetime.now(timezone.utc).timestamp()}",
     }
 
     async with httpx.AsyncClient(timeout=20) as client:
@@ -946,37 +986,29 @@ def create_student(student: StudentCreate, request: Request) -> dict:
     enforce_rate_limit(f"register:{client_ip(request)}", REGISTER_RATE_LIMIT)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with get_connection() as connection:
-        username_exists = connection.execute(
-            "SELECT id FROM students WHERE lower(username) = lower(?)",
-            (student.username,),
-        ).fetchone()
         normalized_phone = normalize_whatsapp_phone(student.phone)
         phone_exists = connection.execute(
             "SELECT id FROM students WHERE phone = ?",
             (normalized_phone,),
         ).fetchone()
 
-        if username_exists:
-            raise HTTPException(status_code=400, detail="Dados de cadastro já estão em uso.")
         if phone_exists:
-            raise HTTPException(status_code=400, detail="Dados de cadastro já estão em uso.")
+            raise HTTPException(status_code=400, detail="Telefone ja cadastrado.")
 
         student_id = insert_returning_id(
             connection,
             """
             INSERT INTO students (
-                username, phone, email, password_hash, full_name, age,
+                phone, email, full_name, age,
                 birth_date, cpf, address, neighborhood, city, modality,
                 jiu_jitsu_start_date, monthly_fee,
                 payment_day, payment_status, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', ?)
             """,
             (
-                student.username,
                 normalized_phone,
                 f"{normalized_phone}@phone.local",
-                hash_password(student.password),
                 student.full_name,
                 student.age,
                 student.birth_date,
@@ -1033,21 +1065,10 @@ def create_student(student: StudentCreate, request: Request) -> dict:
 def login(login_data: LoginRequest, request: Request) -> dict:
     enforce_rate_limit(f"login:{client_ip(request)}", LOGIN_RATE_LIMIT)
     with get_connection() as connection:
-        student = connection.execute(
-            "SELECT username, password_hash FROM students WHERE lower(username) = lower(?)",
-            (login_data.username,),
-        ).fetchone()
         admin = connection.execute(
             "SELECT username, password_hash FROM admins WHERE lower(username) = lower(?)",
             (login_data.username,),
         ).fetchone()
-
-    if student and verify_password(login_data.password, student["password_hash"]):
-        return {
-            "access_token": create_token(student["username"], "student"),
-            "token_type": "bearer",
-            "role": "student",
-        }
 
     if admin and verify_password(login_data.password, admin["password_hash"]):
         return {
@@ -1059,74 +1080,6 @@ def login(login_data: LoginRequest, request: Request) -> dict:
     raise HTTPException(status_code=401, detail="Usuario ou senha invalidos.")
 
 
-@app.get("/me")
-def get_profile(payload: Annotated[dict, Depends(require_student)]) -> dict:
-    return public_student(fetch_student(payload["sub"]))
-
-
-@app.post("/payments/pix")
-async def create_pix_payment(
-    payment: PaymentCreate,
-    payload: Annotated[dict, Depends(require_student)],
-) -> dict:
-    student = fetch_student(payload["sub"])
-    provider_result = await create_provider_pix_payment(student, payment.amount)
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-    with get_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO payments (
-                student_id, amount, status, method, provider,
-                provider_payment_id, pix_code, created_at
-            )
-            VALUES (?, ?, ?, 'pix', ?, ?, ?, ?)
-            """,
-            (
-                student["id"],
-                payment.amount,
-                provider_result["status"],
-                provider_result["provider"],
-                provider_result["provider_payment_id"],
-                provider_result["pix_code"],
-                now,
-            ),
-        )
-
-    return {
-        "message": "Cobranca Pix criada.",
-        "pix_code": provider_result["pix_code"],
-        "status": provider_result["status"],
-        "provider": provider_result["provider"],
-    }
-
-
-@app.post("/payments")
-def create_manual_payment(
-    payment: PaymentCreate,
-    payload: Annotated[dict, Depends(require_student)],
-) -> dict:
-    student = fetch_student(payload["sub"])
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-    with get_connection() as connection:
-        connection.execute(
-            "UPDATE students SET payment_status = 'pago' WHERE id = ?",
-            (student["id"],),
-        )
-        connection.execute(
-            """
-            INSERT INTO payments (
-                student_id, amount, status, method, provider, pix_code, paid_at, created_at
-            )
-            VALUES (?, ?, 'pago', 'pix', 'manual', ?, ?, ?)
-            """,
-            (student["id"], payment.amount, PIX_KEY, now, now),
-        )
-
-    return {"message": "Pagamento registrado."}
-
-
 @app.get("/admin/students")
 def list_students(_: Annotated[dict, Depends(require_admin)]) -> list[dict]:
     with get_connection() as connection:
@@ -1134,7 +1087,6 @@ def list_students(_: Annotated[dict, Depends(require_admin)]) -> list[dict]:
             """
             SELECT
                 id,
-                username,
                 phone,
                 full_name,
                 age,
@@ -1160,12 +1112,12 @@ def list_students(_: Annotated[dict, Depends(require_admin)]) -> list[dict]:
     ]
 
 
-@app.get("/admin/students/{username}")
+@app.get("/admin/students/{student_id}")
 def get_student_details(
-    username: str,
+    student_id: int,
     _: Annotated[dict, Depends(require_admin)],
 ) -> dict:
-    return public_student(fetch_student(username))
+    return public_student(fetch_student(student_id))
 
 
 @app.get("/admin/payments")
@@ -1176,7 +1128,6 @@ def list_payments(_: Annotated[dict, Depends(require_admin)]) -> list[dict]:
             SELECT
                 payments.id,
                 students.full_name,
-                students.username,
                 payments.amount,
                 payments.status,
                 payments.method,
@@ -1295,7 +1246,7 @@ def list_dropout_students(_: Annotated[dict, Depends(require_admin)]) -> list[di
     with get_connection() as connection:
         students = connection.execute(
             """
-            SELECT id, username, full_name, phone, modality, dropout_date
+            SELECT id, full_name, phone, modality, dropout_date
             FROM students
             WHERE student_status = 'desistente'
             ORDER BY dropout_date DESC, full_name
@@ -1311,9 +1262,9 @@ def list_dropout_students(_: Annotated[dict, Depends(require_admin)]) -> list[di
     ]
 
 
-@app.patch("/admin/students/{username}/admin-info")
+@app.patch("/admin/students/{student_id}/admin-info")
 def update_student_admin_info(
-    username: str,
+    student_id: int,
     update: StudentAdminUpdate,
     _: Annotated[dict, Depends(require_admin)],
 ) -> dict:
@@ -1322,18 +1273,18 @@ def update_student_admin_info(
             """
             UPDATE students
             SET authorization_signed = ?, scholarship_type = ?
-            WHERE username = ?
+            WHERE id = ?
             """,
-            (update.authorization_signed, update.scholarship_type, username),
+            (update.authorization_signed, update.scholarship_type, student_id),
         )
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
     return {"message": "Dados administrativos atualizados."}
 
 
-@app.patch("/admin/students/{username}/dropout")
+@app.patch("/admin/students/{student_id}/dropout")
 def mark_student_dropout(
-    username: str,
+    student_id: int,
     _: Annotated[dict, Depends(require_admin)],
 ) -> dict:
     today = datetime.now().date().isoformat()
@@ -1342,18 +1293,18 @@ def mark_student_dropout(
             """
             UPDATE students
             SET student_status = 'desistente', dropout_date = ?
-            WHERE username = ?
+            WHERE id = ?
             """,
-            (today, username),
+            (today, student_id),
         )
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
     return {"message": "Aluno marcado como desistente."}
 
 
-@app.patch("/admin/students/{username}/reactivate")
+@app.patch("/admin/students/{student_id}/reactivate")
 def reactivate_student(
-    username: str,
+    student_id: int,
     _: Annotated[dict, Depends(require_admin)],
 ) -> dict:
     with get_connection() as connection:
@@ -1361,9 +1312,9 @@ def reactivate_student(
             """
             UPDATE students
             SET student_status = 'ativo', dropout_date = NULL
-            WHERE username = ?
+            WHERE id = ?
             """,
-            (username,),
+            (student_id,),
         )
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
@@ -1472,36 +1423,35 @@ def get_payment_reminder_links(
     return build_admin_payment_reminder_links(reminder_type)
 
 
-@app.patch("/admin/students/{username}/payment-status")
+@app.patch("/admin/students/{student_id}/payment-status")
 def update_payment_status(
-    username: str,
+    student_id: int,
     status_update: PaymentStatusUpdate,
     _: Annotated[dict, Depends(require_admin)],
 ) -> dict:
     with get_connection() as connection:
         cursor = connection.execute(
-            "UPDATE students SET payment_status = ? WHERE username = ?",
-            (status_update.payment_status, username),
+            "UPDATE students SET payment_status = ? WHERE id = ?",
+            (status_update.payment_status, student_id),
         )
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
     return {"message": "Status atualizado."}
 
 
-@app.delete("/admin/students/{username}")
+@app.delete("/admin/students/{student_id}")
 def delete_student(
-    username: str,
+    student_id: int,
     _: Annotated[dict, Depends(require_admin)],
 ) -> dict:
     with get_connection() as connection:
         student = connection.execute(
-            "SELECT id FROM students WHERE username = ?",
-            (username,),
+            "SELECT id FROM students WHERE id = ?",
+            (student_id,),
         ).fetchone()
         if not student:
             raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
 
-        student_id = student["id"]
         connection.execute("DELETE FROM email_reminders WHERE student_id = ?", (student_id,))
         connection.execute("DELETE FROM payments WHERE student_id = ?", (student_id,))
         connection.execute("DELETE FROM training_days WHERE student_id = ?", (student_id,))
