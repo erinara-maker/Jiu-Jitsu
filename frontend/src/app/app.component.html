@@ -185,6 +185,13 @@
       </div>
     </div>
 
+    <nav class="admin-nav">
+      <button type="button" [class.admin-nav-active]="activeSection === 'alunos'" (click)="activeSection = 'alunos'">Alunos</button>
+      <button type="button" [class.admin-nav-active]="activeSection === 'caixa'" (click)="activeSection = 'caixa'">Caixa</button>
+      <button type="button" [class.admin-nav-active]="activeSection === 'professores'" (click)="activeSection = 'professores'">Professores</button>
+    </nav>
+
+    <ng-container *ngIf="activeSection === 'alunos'">
     <article class="panel">
       <h3>Alunos cadastrados</h3>
       <div class="cash-flow-filter">
@@ -265,6 +272,45 @@
       </div>
     </article>
 
+    <article class="panel">
+      <h3>Alunos que foram e não voltaram</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>N.</th>
+              <th>Aluno</th>
+              <th>Celular</th>
+              <th>Modalidade</th>
+              <th>Data</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let student of pagedDropouts">
+              <td>{{ student.student_number }}</td>
+              <td>{{ student.full_name }}</td>
+              <td>{{ displayPhone(student.phone) }}</td>
+              <td>{{ formatModality(student.modality) }}</td>
+              <td>{{ student.dropout_date }}</td>
+              <td><button class="ghost small" type="button" (click)="reactivateStudent(student)">Reativar</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" *ngIf="totalDropoutsPages > 1">
+        <button class="ghost small" type="button" [disabled]="dropoutsPage === 1" (click)="dropoutsPage = dropoutsPage - 1">‹</button>
+        <button
+          *ngFor="let p of dropoutsPageNumbers()"
+          class="ghost small"
+          [class.page-active]="p === dropoutsPage"
+          type="button"
+          (click)="dropoutsPage = p">{{ p }}</button>
+        <button class="ghost small" type="button" [disabled]="dropoutsPage === totalDropoutsPages" (click)="dropoutsPage = dropoutsPage + 1">›</button>
+        <span class="page-info">{{ dropoutStudents.length }} alunos</span>
+      </div>
+    </article>
+
     <!-- Modal lembrete -->
     <div class="modal-backdrop" *ngIf="reminderStudent" (click)="closeReminderModal()">
       <div class="modal-box" (click)="$event.stopPropagation()">
@@ -279,7 +325,9 @@
       </div>
     </div>
 
-    <article class="panel student-details" *ngIf="selectedStudent">
+    <div class="modal-backdrop" *ngIf="selectedStudent" (click)="closeStudentDetails()">
+      <div class="modal-box modal-student" (click)="$event.stopPropagation()">
+        <article class="panel student-details">
       <div class="detail-header">
         <div>
           <p class="eyebrow">Aluno selecionado</p>
@@ -488,8 +536,13 @@
           <button class="ghost" type="button" (click)="cancelEditStudent()">Cancelar</button>
         </div>
       </form>
-    </article>
+        </article>
+      </div>
+    </div>
 
+    </ng-container>
+
+    <ng-container *ngIf="activeSection === 'caixa'">
     <article class="panel">
       <h3>Fluxo de caixa</h3>
       <div class="cash-flow-filter">
@@ -593,35 +646,9 @@
         </table>
       </div>
     </article>
+    </ng-container>
 
-    <article class="panel">
-      <h3>Alunos que foram e não voltaram</h3>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>N.</th>
-              <th>Aluno</th>
-              <th>Celular</th>
-              <th>Modalidade</th>
-              <th>Data</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let student of dropoutStudents">
-              <td>{{ student.student_number }}</td>
-              <td>{{ student.full_name }}</td>
-              <td>{{ displayPhone(student.phone) }}</td>
-              <td>{{ formatModality(student.modality) }}</td>
-              <td>{{ student.dropout_date }}</td>
-              <td><button class="ghost small" type="button" (click)="reactivateStudent(student)">Reativar</button></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </article>
-
+    <ng-container *ngIf="activeSection === 'professores'">
     <article class="panel">
       <h3>Cadastro de professor</h3>
       <form class="teacher-form" (ngSubmit)="createTeacher()">
@@ -732,6 +759,7 @@
         </div>
       </div>
     </article>
+    </ng-container>
 
   </section>
 

@@ -202,8 +202,11 @@ export class AppComponent {
   reminderStudent?: AdminStudent;
   cashFlowMonth = new Date().toISOString().slice(0, 7);
   adminMonth = new Date().toISOString().slice(0, 7);
+  activeSection: 'alunos' | 'caixa' | 'professores' = 'alunos';
   studentsPage = 1;
   readonly studentsPageSize = 10;
+  dropoutsPage = 1;
+  readonly dropoutsPageSize = 10;
 
   get pagedStudents(): AdminStudent[] {
     const start = (this.studentsPage - 1) * this.studentsPageSize;
@@ -216,6 +219,19 @@ export class AppComponent {
 
   studentsPageNumbers(): number[] {
     return Array.from({ length: this.totalStudentsPages }, (_, i) => i + 1);
+  }
+
+  get pagedDropouts(): AdminStudent[] {
+    const start = (this.dropoutsPage - 1) * this.dropoutsPageSize;
+    return this.dropoutStudents.slice(start, start + this.dropoutsPageSize);
+  }
+
+  get totalDropoutsPages(): number {
+    return Math.ceil(this.dropoutStudents.length / this.dropoutsPageSize);
+  }
+
+  dropoutsPageNumbers(): number[] {
+    return Array.from({ length: this.totalDropoutsPages }, (_, i) => i + 1);
   }
   userRole = localStorage.getItem('jj_role') || '';
   token = localStorage.getItem('jj_token') || '';

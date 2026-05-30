@@ -795,6 +795,53 @@ tbody td span + span { display: inline-block; margin-right: 6px; }
 .reminder-actions button { background: var(--ink-900); }
 .reminder-actions button:hover { background: var(--blood-500); }
 
+/* ---------- ADMIN NAV ---------- */
+.admin-nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--bone-200);
+  margin-bottom: 24px;
+}
+
+.admin-nav button {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 10px 20px;
+  font-family: var(--font-condensed);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.admin-nav button:hover { color: var(--ink-900); }
+
+.admin-nav-active {
+  color: var(--navy-700) !important;
+  border-bottom-color: var(--navy-700) !important;
+}
+
+/* ---------- STUDENT MODAL ---------- */
+.modal-box.modal-student {
+  max-width: 1100px;
+  width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  gap: 0;
+  padding: 0;
+}
+
+.modal-student .panel {
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
+}
+
 /* ---------- BELL BUTTON ---------- */
 .trash-btn {
   display: inline-flex;
