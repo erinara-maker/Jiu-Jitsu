@@ -175,6 +175,34 @@ class StudentAdminUpdate(BaseModel):
     scholarship_type: str = Field(pattern="^(nao|sim|bolsa parcial|com 2 filhos)$")
 
 
+class MonthlyPaymentUpdate(BaseModel):
+    year_month: str
+    status: str = Field(pattern="^(pendente|pago)$")
+
+
+class StudentUpdate(BaseModel):
+    phone: str = Field(min_length=10)
+    full_name: str = Field(min_length=3)
+    age: int = Field(ge=4, le=100)
+    birth_date: str = ""
+    cpf: str = ""
+    address: str = ""
+    neighborhood: str = ""
+    city: str = ""
+    modality: str
+    jiu_jitsu_start_date: str = ""
+    monthly_fee: float = Field(gt=0)
+    payment_day: int = Field(ge=1, le=31)
+    guardian_name: str = ""
+    guardian_relationship: str = ""
+    guardian_cpf: str = ""
+    guardian_phone: str = ""
+    guardian_secondary_phone: str = ""
+    medical_restriction: str = "nao"
+    medical_restriction_description: str = ""
+    training_days: list[TrainingDay] = []
+
+
 class TeacherCreate(BaseModel):
     name: str = Field(min_length=3)
     cpf: str = ""
@@ -424,6 +452,15 @@ def init_database() -> None:
                 notes TEXT,
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS student_monthly_payments (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                year_month TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pendente',
+                updated_at TEXT NOT NULL,
+                UNIQUE(student_id, year_month)
+            );
             """
         else:
             schema_sql = """
@@ -536,6 +573,16 @@ def init_database() -> None:
                 notes TEXT,
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS student_monthly_payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                year_month TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pendente',
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (student_id) REFERENCES students(id),
+                UNIQUE(student_id, year_month)
+            );
             """
         connection.executescript(schema_sql)
 
@@ -627,6 +674,37 @@ def init_database() -> None:
             )
         if "notes" not in cash_flow_columns:
             connection.execute("ALTER TABLE cash_flow_entries ADD COLUMN notes TEXT")
+
+        existing_tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        } if not USE_POSTGRES else set()
+        if not USE_POSTGRES and "student_monthly_payments" not in existing_tables:
+            connection.execute(
+                """
+                CREATE TABLE student_monthly_payments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_id INTEGER NOT NULL,
+                    year_month TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pendente',
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (student_id) REFERENCES students(id),
+                    UNIQUE(student_id, year_month)
+                )
+                """
+            )
+            now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            current_month = datetime.now().date().isoformat()[:7]
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO student_monthly_payments (student_id, year_month, status, updated_at)
+                SELECT id, ?, payment_status, ? FROM students
+                WHERE student_status = 'ativo' AND substr(created_at, 1, 7) <= ?
+                """,
+                (current_month, now, current_month),
+            )
 
         admin_username = getenv("ADMIN_USERNAME", "admin")
         admin_password = getenv("ADMIN_PASSWORD", "admin123")
@@ -1081,32 +1159,64 @@ def login(login_data: LoginRequest, request: Request) -> dict:
 
 
 @app.get("/admin/students")
-def list_students(_: Annotated[dict, Depends(require_admin)]) -> list[dict]:
+def list_students(
+    _: Annotated[dict, Depends(require_admin)],
+    month: str = Query(default=""),
+) -> list[dict]:
+    selected_month = month or datetime.now().date().isoformat()[:7]
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with get_connection() as connection:
         students = connection.execute(
             """
             SELECT
-                id,
-                phone,
-                full_name,
-                age,
-                modality,
-                monthly_fee,
-                payment_day,
-                payment_status,
-                authorization_signed,
-                scholarship_type,
-                student_status
+                id, phone, full_name, age, modality, monthly_fee,
+                payment_day, authorization_signed, scholarship_type, student_status,
+                substr(created_at, 1, 7) AS enrollment_month
             FROM students
             WHERE student_status = 'ativo'
             ORDER BY full_name
             """
         ).fetchall()
+
+        for student in students:
+            if student["enrollment_month"] <= selected_month:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO student_monthly_payments (student_id, year_month, status, updated_at)
+                    VALUES (?, ?, 'pendente', ?)
+                    """,
+                    (student["id"], selected_month, now),
+                )
+
+        monthly_statuses = connection.execute(
+            "SELECT student_id, status FROM student_monthly_payments WHERE year_month = ?",
+            (selected_month,),
+        ).fetchall()
+        status_map = {row["student_id"]: row["status"] for row in monthly_statuses}
+
+        delinquent_rows = connection.execute(
+            """
+            SELECT smp.student_id, smp.year_month
+            FROM student_monthly_payments smp
+            JOIN students s ON s.id = smp.student_id
+            WHERE smp.status = 'pendente'
+              AND smp.year_month < ?
+              AND smp.year_month >= substr(s.created_at, 1, 7)
+            ORDER BY smp.year_month
+            """,
+            (selected_month,),
+        ).fetchall()
+        delinquent_map: dict[int, list[str]] = {}
+        for row in delinquent_rows:
+            delinquent_map.setdefault(row["student_id"], []).append(row["year_month"])
+
     return [
         {
             **dict(student),
             "student_number": f"{student['id']:03d}",
             "phone": phone_for_display(student["phone"]),
+            "payment_status": status_map.get(student["id"], "pendente"),
+            "delinquent_months": delinquent_map.get(student["id"], []),
         }
         for student in students
     ]
@@ -1118,6 +1228,80 @@ def get_student_details(
     _: Annotated[dict, Depends(require_admin)],
 ) -> dict:
     return public_student(fetch_student(student_id))
+
+
+@app.patch("/admin/students/{student_id}")
+def update_student(
+    student_id: int,
+    update: StudentUpdate,
+    _: Annotated[dict, Depends(require_admin)],
+) -> dict:
+    fetch_student(student_id)
+    normalized_phone = normalize_whatsapp_phone(update.phone)
+    with get_connection() as connection:
+        phone_conflict = connection.execute(
+            "SELECT id FROM students WHERE phone = ? AND id != ?",
+            (normalized_phone, student_id),
+        ).fetchone()
+        if phone_conflict:
+            raise HTTPException(status_code=400, detail="Telefone já cadastrado por outro aluno.")
+
+        connection.execute(
+            """
+            UPDATE students SET
+                phone = ?, full_name = ?, age = ?,
+                birth_date = ?, cpf = ?, address = ?, neighborhood = ?, city = ?,
+                modality = ?, jiu_jitsu_start_date = ?, monthly_fee = ?, payment_day = ?
+            WHERE id = ?
+            """,
+            (
+                normalized_phone,
+                update.full_name,
+                update.age,
+                update.birth_date,
+                update.cpf,
+                update.address,
+                update.neighborhood,
+                update.city,
+                update.modality,
+                update.jiu_jitsu_start_date,
+                update.monthly_fee,
+                update.payment_day,
+                student_id,
+            ),
+        )
+        connection.execute("DELETE FROM guardians WHERE student_id = ?", (student_id,))
+        connection.execute(
+            """
+            INSERT INTO guardians (student_id, name, relationship, cpf, phone, secondary_phone)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                student_id,
+                update.guardian_name,
+                update.guardian_relationship,
+                update.guardian_cpf,
+                normalize_whatsapp_phone(update.guardian_phone),
+                normalize_whatsapp_phone(update.guardian_secondary_phone),
+            ),
+        )
+        connection.execute("DELETE FROM medical_infos WHERE student_id = ?", (student_id,))
+        connection.execute(
+            """
+            INSERT INTO medical_infos (student_id, has_restriction, description)
+            VALUES (?, ?, ?)
+            """,
+            (student_id, update.medical_restriction, update.medical_restriction_description),
+        )
+        connection.execute("DELETE FROM training_days WHERE student_id = ?", (student_id,))
+        connection.executemany(
+            """
+            INSERT INTO training_days (student_id, day, start_time, end_time)
+            VALUES (?, ?, ?, ?)
+            """,
+            [(student_id, td.day, td.start_time, td.end_time) for td in update.training_days],
+        )
+    return {"message": "Aluno atualizado com sucesso."}
 
 
 @app.get("/admin/payments")
@@ -1404,23 +1588,25 @@ def delete_teacher(
     return {"message": "Professor excluido."}
 
 
-@app.post("/admin/payment-reminders/run")
-def run_payment_reminders(_: Annotated[dict, Depends(require_admin)]) -> dict:
-    result = send_due_payment_reminders()
-    return {
-        "message": "Verificacao de lembretes concluida.",
-        **result,
-    }
-
-
-@app.get("/admin/payment-reminders/whatsapp-links")
-def get_payment_reminder_links(
+@app.get("/admin/students/{student_id}/reminder-link")
+def get_student_reminder_link(
+    student_id: int,
     _: Annotated[dict, Depends(require_admin)],
-    reminder_type: str = "due",
+    reminder_type: str = Query(default="due"),
 ) -> dict:
     if reminder_type not in ("before", "due"):
         raise HTTPException(status_code=400, detail="Tipo de lembrete invalido.")
-    return build_admin_payment_reminder_links(reminder_type)
+    student = fetch_student(student_id)
+    with get_connection() as connection:
+        guardian = connection.execute(
+            "SELECT name, phone, secondary_phone FROM guardians WHERE student_id = ?",
+            (student_id,),
+        ).fetchone()
+    contact_phone, contact_name = reminder_contact(student, guardian)
+    if not contact_phone:
+        raise HTTPException(status_code=400, detail="Aluno sem telefone de contato cadastrado.")
+    body = build_payment_reminder_message(student, reminder_type)
+    return {"url": whatsapp_link(contact_phone, body), "contact_name": contact_name}
 
 
 @app.patch("/admin/students/{student_id}/payment-status")
@@ -1437,6 +1623,26 @@ def update_payment_status(
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
     return {"message": "Status atualizado."}
+
+
+@app.patch("/admin/students/{student_id}/monthly-payment")
+def update_monthly_payment(
+    student_id: int,
+    update: MonthlyPaymentUpdate,
+    _: Annotated[dict, Depends(require_admin)],
+) -> dict:
+    fetch_student(student_id)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO student_monthly_payments (student_id, year_month, status, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(student_id, year_month) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
+            """,
+            (student_id, update.year_month, update.status, now),
+        )
+    return {"message": "Status mensal atualizado."}
 
 
 @app.delete("/admin/students/{student_id}")
@@ -1486,6 +1692,7 @@ async def payment_webhook(request: Request) -> dict:
                     ).fetchone()
                     if payment:
                         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                        current_month = datetime.now().date().isoformat()[:7]
                         connection.execute(
                             "UPDATE payments SET status = 'pago', paid_at = ? WHERE provider_payment_id = ?",
                             (now, payment_id),
@@ -1493,6 +1700,14 @@ async def payment_webhook(request: Request) -> dict:
                         connection.execute(
                             "UPDATE students SET payment_status = 'pago' WHERE id = ?",
                             (payment["student_id"],),
+                        )
+                        connection.execute(
+                            """
+                            INSERT INTO student_monthly_payments (student_id, year_month, status, updated_at)
+                            VALUES (?, ?, 'pago', ?)
+                            ON CONFLICT(student_id, year_month) DO UPDATE SET status = 'pago', updated_at = excluded.updated_at
+                            """,
+                            (payment["student_id"], current_month, now),
                         )
 
     return {"message": "Webhook processado."}

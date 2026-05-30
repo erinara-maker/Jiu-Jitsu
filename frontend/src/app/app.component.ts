@@ -66,6 +66,7 @@ interface AdminStudent {
   scholarship_type: string;
   student_status: string;
   dropout_date?: string;
+  delinquent_months: string[];
 }
 
 interface AdminPayment {
@@ -198,10 +199,55 @@ export class AppComponent {
   };
   paymentReminderLinks: PaymentReminderLink[] = [];
   paymentReminderDate = '';
+  reminderStudent?: AdminStudent;
   cashFlowMonth = new Date().toISOString().slice(0, 7);
+  adminMonth = new Date().toISOString().slice(0, 7);
+  studentsPage = 1;
+  readonly studentsPageSize = 10;
+
+  get pagedStudents(): AdminStudent[] {
+    const start = (this.studentsPage - 1) * this.studentsPageSize;
+    return this.adminStudents.slice(start, start + this.studentsPageSize);
+  }
+
+  get totalStudentsPages(): number {
+    return Math.ceil(this.adminStudents.length / this.studentsPageSize);
+  }
+
+  studentsPageNumbers(): number[] {
+    return Array.from({ length: this.totalStudentsPages }, (_, i) => i + 1);
+  }
   userRole = localStorage.getItem('jj_role') || '';
   token = localStorage.getItem('jj_token') || '';
   message = '';
+  registerMessage = '';
+  editingStudent = false;
+  editData = {
+    phone: '',
+    full_name: '',
+    age: 16,
+    birth_date: '',
+    cpf: '',
+    address: '',
+    neighborhood: '',
+    city: '',
+    modality: 'kid',
+    jiu_jitsu_start_date: '',
+    monthly_fee: 150,
+    payment_day: 10,
+    guardian_name: '',
+    guardian_relationship: '',
+    guardian_cpf: '',
+    guardian_phone: '',
+    guardian_secondary_phone: '',
+    medical_restriction: 'nao',
+    medical_restriction_description: ''
+  };
+  editTrainingDays: Record<string, boolean> = {
+    Segunda: false, Terca: false, Quarta: false,
+    Quinta: false, Sexta: false, Sabado: false
+  };
+  editTrainingTimes = { start_time: '19:00', end_time: '20:30' };
 
   teacherForm = {
     name: '',
@@ -230,7 +276,7 @@ export class AppComponent {
   }
 
   register(): void {
-    this.message = '';
+    this.registerMessage = '';
     const training_days = Object.entries(this.selectedTrainingDays)
       .filter(([, selected]) => selected)
       .map(([day]) => ({
@@ -244,9 +290,41 @@ export class AppComponent {
       training_days
     }).subscribe({
       next: () => {
-        this.message = 'Cadastro criado com sucesso.';
+        this.registerMessage = 'Cadastro criado com sucesso.';
+        this.registerData = {
+          phone: '',
+          full_name: '',
+          age: 16,
+          birth_date: '',
+          cpf: '',
+          address: '',
+          neighborhood: '',
+          city: '',
+          modality: 'kid',
+          jiu_jitsu_start_date: '',
+          monthly_fee: 150,
+          payment_day: 10,
+          guardian_name: '',
+          guardian_relationship: '',
+          guardian_cpf: '',
+          guardian_phone: '',
+          guardian_secondary_phone: '',
+          medical_restriction: 'nao',
+          medical_restriction_description: ''
+        };
+        this.selectedTrainingDays = {
+          Segunda: true,
+          Terca: false,
+          Quarta: true,
+          Quinta: false,
+          Sexta: true,
+          Sabado: false
+        };
+        this.trainingTimes = { start_time: '19:00', end_time: '20:30' };
       },
-      error: (error) => this.message = error.error?.detail || 'Não foi possível cadastrar.'
+      error: (error) => {
+        this.registerMessage = error.error?.detail || 'Não foi possível cadastrar.';
+      }
     });
   }
 
@@ -281,15 +359,17 @@ export class AppComponent {
     });
   }
 
-  loadAdmin(): void {
+  loadAdminStudents(): void {
     const headers = { Authorization: `Bearer ${this.token}` };
-    this.http.get<AdminStudent[]>(`${this.apiUrl}/admin/students`, { headers }).subscribe({
-      next: (students) => this.adminStudents = students,
+    this.http.get<AdminStudent[]>(`${this.apiUrl}/admin/students?month=${this.adminMonth}`, { headers }).subscribe({
+      next: (students) => { this.adminStudents = students; this.studentsPage = 1; },
       error: () => this.logout()
     });
-    this.http.get<AdminPayment[]>(`${this.apiUrl}/admin/payments`, { headers }).subscribe({
-      next: (payments) => this.adminPayments = payments
-    });
+  }
+
+  loadAdmin(): void {
+    const headers = { Authorization: `Bearer ${this.token}` };
+    this.loadAdminStudents();
     this.http.get<AdminStudent[]>(`${this.apiUrl}/admin/dropouts`, { headers }).subscribe({
       next: (students) => this.dropoutStudents = students
     });
@@ -424,6 +504,96 @@ export class AppComponent {
 
   closeStudentDetails(): void {
     this.selectedStudent = undefined;
+    this.editingStudent = false;
+  }
+
+  startEditStudent(): void {
+    if (!this.selectedStudent) return;
+    const s = this.selectedStudent;
+    this.editData = {
+      phone: s.phone,
+      full_name: s.full_name,
+      age: s.age,
+      birth_date: s.birth_date,
+      cpf: s.cpf,
+      address: s.address,
+      neighborhood: s.neighborhood,
+      city: s.city,
+      modality: s.modality,
+      jiu_jitsu_start_date: s.jiu_jitsu_start_date,
+      monthly_fee: s.monthly_fee,
+      payment_day: s.payment_day,
+      guardian_name: s.guardian.name || '',
+      guardian_relationship: s.guardian.relationship || '',
+      guardian_cpf: s.guardian.cpf || '',
+      guardian_phone: s.guardian.phone || '',
+      guardian_secondary_phone: s.guardian.secondary_phone || '',
+      medical_restriction: s.medical_info.has_restriction || 'nao',
+      medical_restriction_description: s.medical_info.description || ''
+    };
+    this.editTrainingDays = { Segunda: false, Terca: false, Quarta: false, Quinta: false, Sexta: false, Sabado: false };
+    if (s.training_days.length > 0) {
+      this.editTrainingTimes = { start_time: s.training_days[0].start_time, end_time: s.training_days[0].end_time };
+      for (const td of s.training_days) {
+        this.editTrainingDays[td.day] = true;
+      }
+    }
+    this.editingStudent = true;
+  }
+
+  cancelEditStudent(): void {
+    this.editingStudent = false;
+  }
+
+  shouldShowGuardianEdit(): boolean {
+    return Number(this.editData.age) < 18;
+  }
+
+  syncAgeFromBirthDateEdit(): void {
+    const birthDate = this.editData.birth_date;
+    if (birthDate) {
+      const birth = new Date(`${birthDate}T00:00:00`);
+      if (!Number.isNaN(birth.getTime())) {
+        const today = new Date();
+        let age = today.getFullYear() - birth.getFullYear();
+        const hadBirthday =
+          today.getMonth() > birth.getMonth() ||
+          (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+        if (!hadBirthday) age -= 1;
+        this.editData.age = age;
+      }
+    }
+  }
+
+  saveStudentEdit(): void {
+    if (!this.selectedStudent) return;
+    const training_days = Object.entries(this.editTrainingDays)
+      .filter(([, selected]) => selected)
+      .map(([day]) => ({
+        day,
+        start_time: this.editTrainingTimes.start_time,
+        end_time: this.editTrainingTimes.end_time
+      }));
+
+    this.http.patch(`${this.apiUrl}/admin/students/${this.selectedStudent.id}`, {
+      ...this.editData,
+      training_days
+    }, {
+      headers: { Authorization: `Bearer ${this.token}` }
+    }).subscribe({
+      next: () => {
+        this.message = 'Aluno atualizado com sucesso.';
+        this.editingStudent = false;
+        this.openStudentDetails(this.selectedStudent!.id);
+        this.loadAdmin();
+      },
+      error: (error) => {
+        const detail = error.error?.detail;
+        this.message = Array.isArray(detail)
+          ? detail.map((item: { msg: string }) => item.msg).join(' ')
+          : detail || 'Não foi possível atualizar o aluno.';
+      }
+    });
   }
 
   saveStudentAdminInfo(): void {
@@ -473,6 +643,61 @@ export class AppComponent {
         this.loadAdmin();
       },
       error: (error) => this.message = error.error?.detail || 'Não foi possível reativar o aluno.'
+    });
+  }
+
+  paymentDueState(student: AdminStudent): 'soon' | 'overdue' | null {
+    if (student.payment_status === 'pago') return null;
+    const now = new Date();
+    if (this.adminMonth !== now.toISOString().slice(0, 7)) return null;
+    const today = now.getDate();
+    const diff = today - student.payment_day;
+    if (diff === -1) return 'soon';
+    if (diff >= 0) return 'overdue';
+    return null;
+  }
+
+  formatYearMonth(yearMonth: string): string {
+    const [year, month] = yearMonth.split('-');
+    const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    return `${months[parseInt(month, 10) - 1]}/${year}`;
+  }
+
+  openReminderModal(student: AdminStudent): void {
+    this.reminderStudent = student;
+  }
+
+  closeReminderModal(): void {
+    this.reminderStudent = undefined;
+  }
+
+  sendReminder(type: 'before' | 'due'): void {
+    if (!this.reminderStudent) return;
+    this.http.get<{ url: string; contact_name: string }>(
+      `${this.apiUrl}/admin/students/${this.reminderStudent.id}/reminder-link?reminder_type=${type}`,
+      { headers: { Authorization: `Bearer ${this.token}` } }
+    ).subscribe({
+      next: ({ url }) => {
+        window.open(url, '_blank', 'noopener');
+        this.closeReminderModal();
+      },
+      error: (error) => {
+        this.message = error.error?.detail || 'Não foi possível gerar o lembrete.';
+        this.closeReminderModal();
+      }
+    });
+  }
+
+  toggleMonthlyPayment(student: AdminStudent): void {
+    const newStatus = student.payment_status === 'pago' ? 'pendente' : 'pago';
+    this.http.patch(`${this.apiUrl}/admin/students/${student.id}/monthly-payment`, {
+      year_month: this.adminMonth,
+      status: newStatus
+    }, {
+      headers: { Authorization: `Bearer ${this.token}` }
+    }).subscribe({
+      next: () => this.loadAdminStudents(),
+      error: (error) => this.message = error.error?.detail || 'Não foi possível atualizar o status.'
     });
   }
 
