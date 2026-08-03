@@ -13,8 +13,9 @@ import httpx
 import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 try:
@@ -86,6 +87,49 @@ if IS_PRODUCTION:
 
 app = FastAPI(title="CTC - Centro de Treinamento Canoa API")
 
+FIELD_LABELS = {
+    "phone": "Celular",
+    "full_name": "Nome completo",
+    "age": "Idade",
+    "birth_date": "Data de nascimento",
+    "cpf": "CPF",
+    "address": "Endereço",
+    "neighborhood": "Bairro",
+    "city": "Cidade",
+    "modality": "Modalidade",
+    "monthly_fee": "Mensalidade",
+    "payment_day": "Dia de pagamento",
+    "guardian_name": "Nome do responsável",
+    "guardian_phone": "Telefone do responsável",
+    "medical_restriction": "Restrição médica",
+    "training_days": "Dias de treino",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    messages: list[str] = []
+    for error in exc.errors():
+        field = str(error.get("loc", ["campo"])[-1])
+        label = FIELD_LABELS.get(field, field.replace("_", " ").title())
+        error_type = error.get("type", "")
+        if error_type == "missing":
+            messages.append(f"{label} é obrigatório.")
+        elif error_type == "string_too_short":
+            min_length = error.get("ctx", {}).get("min_length")
+            messages.append(f"{label} precisa ter pelo menos {min_length} caracteres.")
+        elif error_type in {"greater_than", "greater_than_equal"}:
+            limit = error.get("ctx", {}).get("gt", error.get("ctx", {}).get("ge"))
+            messages.append(f"{label} precisa ser maior ou igual a {limit}.")
+        elif error_type in {"less_than", "less_than_equal"}:
+            limit = error.get("ctx", {}).get("lt", error.get("ctx", {}).get("le"))
+            messages.append(f"{label} precisa ser menor ou igual a {limit}.")
+        elif error_type == "string_pattern_mismatch":
+            messages.append(f"{label} tem uma opção inválida.")
+        else:
+            messages.append(f"{label} está inválido.")
+    return JSONResponse(status_code=422, content={"detail": " ".join(messages)})
+
 
 @app.middleware("http")
 async def enforce_https_and_security_headers(request: Request, call_next):
@@ -125,7 +169,7 @@ class TrainingDay(BaseModel):
 
 
 class StudentCreate(BaseModel):
-    phone: str = Field(min_length=10)
+    phone: str = ""
     full_name: str = Field(min_length=3)
     age: int = Field(ge=4, le=100)
     birth_date: str = ""
@@ -133,10 +177,10 @@ class StudentCreate(BaseModel):
     address: str = ""
     neighborhood: str = ""
     city: str = ""
-    modality: str = Field(pattern="^(kid|kid \\+|juvenil)$")
+    modality: str = Field(default="kid", pattern="^(kid|kid \\+|juvenil)$")
     jiu_jitsu_start_date: str = ""
-    monthly_fee: float = Field(gt=0)
-    payment_day: int = Field(ge=1, le=31)
+    monthly_fee: float | None = Field(default=None, ge=0)
+    payment_day: int | None = Field(default=None, ge=1, le=31)
     guardian_name: str = ""
     guardian_relationship: str = ""
     guardian_cpf: str = ""
@@ -144,7 +188,7 @@ class StudentCreate(BaseModel):
     guardian_secondary_phone: str = ""
     medical_restriction: str = "nao"
     medical_restriction_description: str = ""
-    training_days: list[TrainingDay]
+    training_days: list[TrainingDay] = Field(default_factory=list)
 
 
 class LoginRequest(BaseModel):
@@ -181,7 +225,7 @@ class MonthlyPaymentUpdate(BaseModel):
 
 
 class StudentUpdate(BaseModel):
-    phone: str = Field(min_length=10)
+    phone: str = ""
     full_name: str = Field(min_length=3)
     age: int = Field(ge=4, le=100)
     birth_date: str = ""
@@ -351,7 +395,7 @@ def init_database() -> None:
             schema_sql = """
             CREATE TABLE IF NOT EXISTS students (
                 id SERIAL PRIMARY KEY,
-                phone TEXT NOT NULL UNIQUE,
+                phone TEXT NOT NULL,
                 email TEXT UNIQUE,
                 full_name TEXT NOT NULL,
                 age INTEGER NOT NULL,
@@ -466,7 +510,7 @@ def init_database() -> None:
             schema_sql = """
             CREATE TABLE IF NOT EXISTS students (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phone TEXT NOT NULL UNIQUE,
+                phone TEXT NOT NULL,
                 email TEXT UNIQUE,
                 full_name TEXT NOT NULL,
                 age INTEGER NOT NULL,
@@ -620,7 +664,58 @@ def init_database() -> None:
                     """
                     CREATE TABLE students_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        phone TEXT NOT NULL UNIQUE,
+                        phone TEXT NOT NULL,
+                        email TEXT UNIQUE,
+                        full_name TEXT NOT NULL,
+                        age INTEGER NOT NULL,
+                        birth_date TEXT,
+                        cpf TEXT,
+                        address TEXT,
+                        neighborhood TEXT,
+                        city TEXT,
+                        modality TEXT NOT NULL DEFAULT 'kid',
+                        jiu_jitsu_start_date TEXT,
+                        monthly_fee REAL NOT NULL,
+                        payment_day INTEGER NOT NULL,
+                        payment_status TEXT NOT NULL DEFAULT 'pendente',
+                        authorization_signed TEXT NOT NULL DEFAULT 'nao',
+                        scholarship_type TEXT NOT NULL DEFAULT 'nao',
+                        student_status TEXT NOT NULL DEFAULT 'ativo',
+                        dropout_date TEXT,
+                        created_at TEXT NOT NULL
+                    );
+
+                    INSERT INTO students_new (
+                        id, phone, email, full_name, age,
+                        birth_date, cpf, address, neighborhood, city, modality,
+                        jiu_jitsu_start_date, monthly_fee,
+                        payment_day, payment_status, authorization_signed,
+                        scholarship_type, student_status, dropout_date, created_at
+                    )
+                    SELECT
+                        id, phone, email, full_name, age,
+                        birth_date, cpf, address, neighborhood, city, modality,
+                        jiu_jitsu_start_date, monthly_fee,
+                        payment_day, payment_status, authorization_signed,
+                        scholarship_type, student_status, dropout_date, created_at
+                    FROM students;
+
+                    DROP TABLE students;
+                    ALTER TABLE students_new RENAME TO students;
+                    PRAGMA foreign_keys=on;
+                    """
+                )
+        if not USE_POSTGRES:
+            student_table = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'students'"
+            ).fetchone()
+            if student_table and "phone TEXT NOT NULL UNIQUE" in student_table[0]:
+                connection.execute("PRAGMA foreign_keys=off")
+                connection.executescript(
+                    """
+                    CREATE TABLE students_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        phone TEXT NOT NULL,
                         email TEXT UNIQUE,
                         full_name TEXT NOT NULL,
                         age INTEGER NOT NULL,
@@ -1060,18 +1155,15 @@ async def root():
 
 
 @app.post("/students", status_code=201)
-def create_student(student: StudentCreate, request: Request) -> dict:
+def create_student(
+    student: StudentCreate,
+    request: Request,
+    _: Annotated[dict, Depends(require_admin)],
+) -> dict:
     enforce_rate_limit(f"register:{client_ip(request)}", REGISTER_RATE_LIMIT)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with get_connection() as connection:
         normalized_phone = normalize_whatsapp_phone(student.phone)
-        phone_exists = connection.execute(
-            "SELECT id FROM students WHERE phone = ?",
-            (normalized_phone,),
-        ).fetchone()
-
-        if phone_exists:
-            raise HTTPException(status_code=400, detail="Telefone ja cadastrado.")
 
         student_id = insert_returning_id(
             connection,
@@ -1086,7 +1178,7 @@ def create_student(student: StudentCreate, request: Request) -> dict:
             """,
             (
                 normalized_phone,
-                f"{normalized_phone}@phone.local",
+                f"{normalized_phone}@phone.local" if normalized_phone else None,
                 student.full_name,
                 student.age,
                 student.birth_date,
@@ -1096,8 +1188,8 @@ def create_student(student: StudentCreate, request: Request) -> dict:
                 student.city,
                 student.modality,
                 student.jiu_jitsu_start_date,
-                student.monthly_fee,
-                student.payment_day,
+                student.monthly_fee if student.monthly_fee is not None else 0,
+                student.payment_day or 10,
                 now,
             ),
         )
@@ -1239,13 +1331,6 @@ def update_student(
     fetch_student(student_id)
     normalized_phone = normalize_whatsapp_phone(update.phone)
     with get_connection() as connection:
-        phone_conflict = connection.execute(
-            "SELECT id FROM students WHERE phone = ? AND id != ?",
-            (normalized_phone, student_id),
-        ).fetchone()
-        if phone_conflict:
-            raise HTTPException(status_code=400, detail="Telefone já cadastrado por outro aluno.")
-
         connection.execute(
             """
             UPDATE students SET

@@ -14,13 +14,13 @@
 
   <p class="message" *ngIf="message">{{ message }}</p>
 
-  <section class="auth-grid" *ngIf="!profile && userRole !== 'admin'">
+  <ng-template #studentRegisterForm>
     <form class="panel" (ngSubmit)="register()">
       <h2>Cadastro do aluno</h2>
 
       <label>
         Celular com DDD
-        <input name="phone" type="tel" [(ngModel)]="registerData.phone" placeholder="85999999999" required>
+        <input name="phone" type="tel" [(ngModel)]="registerData.phone" placeholder="85999999999">
       </label>
 
       <label>
@@ -80,7 +80,7 @@
       <div class="two-columns">
         <label>
           Dia de pagamento
-          <input name="payment_day" type="number" [(ngModel)]="registerData.payment_day" min="1" max="31" required>
+          <input name="payment_day" type="number" [(ngModel)]="registerData.payment_day" min="1" max="31">
         </label>
       </div>
 
@@ -131,7 +131,7 @@
 
       <label>
         Mensalidade
-        <input name="monthly_fee" type="number" [(ngModel)]="registerData.monthly_fee" min="1" required>
+        <input name="monthly_fee" type="number" [(ngModel)]="registerData.monthly_fee" min="0">
       </label>
 
       <div>
@@ -147,18 +147,20 @@
       <div class="two-columns">
         <label>
           Entrada
-          <input name="start_time" type="time" [(ngModel)]="trainingTimes.start_time" required>
+          <input name="start_time" type="time" [(ngModel)]="trainingTimes.start_time">
         </label>
         <label>
           Saída
-          <input name="end_time" type="time" [(ngModel)]="trainingTimes.end_time" required>
+          <input name="end_time" type="time" [(ngModel)]="trainingTimes.end_time">
         </label>
       </div>
 
       <p class="message" *ngIf="registerMessage">{{ registerMessage }}</p>
       <button type="submit">Criar cadastro</button>
     </form>
+  </ng-template>
 
+  <section class="auth-grid login-only" *ngIf="!profile && userRole !== 'admin'">
     <form class="panel compact" (ngSubmit)="login()">
       <h2>Acesso administrativo</h2>
       <label>
@@ -193,7 +195,10 @@
 
     <ng-container *ngIf="activeSection === 'alunos'">
     <article class="panel">
-      <h3>Alunos cadastrados</h3>
+      <div class="panel-title-row">
+        <h3>Alunos cadastrados</h3>
+        <button type="button" (click)="openRegisterModal()">Cadastrar aluno</button>
+      </div>
       <div class="cash-flow-filter">
         <label>
           Mês
@@ -311,6 +316,13 @@
       </div>
     </article>
 
+    <div class="modal-backdrop" *ngIf="showRegisterModal" (click)="closeRegisterModal()">
+      <div class="modal-box modal-student modal-register" (click)="$event.stopPropagation()">
+        <ng-container *ngTemplateOutlet="studentRegisterForm"></ng-container>
+        <button class="ghost modal-close" type="button" (click)="closeRegisterModal()">Cancelar</button>
+      </div>
+    </div>
+
     <!-- Modal lembrete -->
     <div class="modal-backdrop" *ngIf="reminderStudent" (click)="closeReminderModal()">
       <div class="modal-box" (click)="$event.stopPropagation()">
@@ -331,7 +343,7 @@
       <div class="detail-header">
         <div>
           <p class="eyebrow">Aluno selecionado</p>
-          <h3>{{ selectedStudent.full_name }}</h3>
+          <h3>{{ displayValue(selectedStudent.full_name) }}</h3>
         </div>
         <div class="toolbar-actions">
           <button class="ghost" type="button" *ngIf="!editingStudent" (click)="startEditStudent()">Editar</button>
@@ -345,22 +357,22 @@
           <p><strong>N.:</strong> {{ selectedStudent.student_number }}</p>
           <p><strong>Celular/WhatsApp:</strong> {{ displayPhone(selectedStudent.phone) }}</p>
           <p><strong>Idade:</strong> {{ selectedStudent.age }} anos</p>
-          <p><strong>Data de nascimento:</strong> {{ selectedStudent.birth_date || 'Não informada' }}</p>
-          <p><strong>CPF:</strong> {{ selectedStudent.cpf || 'Não informado' }}</p>
-          <p><strong>Modalidade:</strong> {{ formatModality(selectedStudent.modality) }}</p>
-          <p><strong>Ingresso no Jiu-Jitsu:</strong> {{ selectedStudent.jiu_jitsu_start_date || 'Não informado' }}</p>
-          <p><strong>Status financeiro:</strong> {{ selectedStudent.payment_status }}</p>
-          <p><strong>Endereço:</strong> {{ selectedStudent.address || 'Não informado' }}</p>
-          <p><strong>Bairro:</strong> {{ selectedStudent.neighborhood || 'Não informado' }}</p>
-          <p><strong>Cidade:</strong> {{ selectedStudent.city || 'Não informada' }}</p>
+          <p><strong>Data de nascimento:</strong> {{ displayValue(selectedStudent.birth_date) }}</p>
+          <p><strong>CPF:</strong> {{ displayValue(selectedStudent.cpf) }}</p>
+          <p><strong>Modalidade:</strong> {{ displayValue(formatModality(selectedStudent.modality)) }}</p>
+          <p><strong>Ingresso no Jiu-Jitsu:</strong> {{ displayValue(selectedStudent.jiu_jitsu_start_date) }}</p>
+          <p><strong>Status financeiro:</strong> {{ displayValue(selectedStudent.payment_status) }}</p>
+          <p><strong>Endereço:</strong> {{ displayValue(selectedStudent.address) }}</p>
+          <p><strong>Bairro:</strong> {{ displayValue(selectedStudent.neighborhood) }}</p>
+          <p><strong>Cidade:</strong> {{ displayValue(selectedStudent.city) }}</p>
           <p><strong>Restrição médica:</strong> {{ formatOption(selectedStudent.medical_info.has_restriction || 'nao') }}</p>
-          <p><strong>Descrição:</strong> {{ selectedStudent.medical_info.description || 'Não informada' }}</p>
+          <p><strong>Descrição:</strong> {{ displayValue(selectedStudent.medical_info.description) }}</p>
         </div>
 
         <div class="detail-grid" *ngIf="selectedStudent.age < 18">
-          <p><strong>Responsável:</strong> {{ selectedStudent.guardian.name || 'Não informado' }}</p>
-          <p><strong>Parentesco:</strong> {{ selectedStudent.guardian.relationship || 'Não informado' }}</p>
-          <p><strong>CPF do responsável:</strong> {{ selectedStudent.guardian.cpf || 'Não informado' }}</p>
+          <p><strong>Responsável:</strong> {{ displayValue(selectedStudent.guardian.name) }}</p>
+          <p><strong>Parentesco:</strong> {{ displayValue(selectedStudent.guardian.relationship) }}</p>
+          <p><strong>CPF do responsável:</strong> {{ displayValue(selectedStudent.guardian.cpf) }}</p>
           <p><strong>Telefone/WhatsApp do responsável:</strong> {{ displayPhone(selectedStudent.guardian.phone) }}</p>
           <p><strong>Segundo telefone:</strong> {{ displayPhone(selectedStudent.guardian.secondary_phone) }}</p>
         </div>
@@ -387,10 +399,11 @@
         </div>
 
         <h4>Dias e horários de aula</h4>
-        <div class="calendar compact-calendar">
+        <p class="hint" *ngIf="!selectedStudent.training_days.length">Não informado</p>
+        <div class="calendar compact-calendar" *ngIf="selectedStudent.training_days.length">
           <div class="calendar-day" *ngFor="let training of selectedStudent.training_days">
-            <strong>{{ training.day }}</strong>
-            <span>{{ training.start_time }} - {{ training.end_time }}</span>
+            <strong>{{ displayValue(training.day) }}</strong>
+            <span>{{ displayTrainingTime(training) }}</span>
           </div>
         </div>
       </ng-container>

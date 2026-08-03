@@ -238,6 +238,7 @@ export class AppComponent {
   message = '';
   registerMessage = '';
   editingStudent = false;
+  showRegisterModal = false;
   editData = {
     phone: '',
     full_name: '',
@@ -293,6 +294,12 @@ export class AppComponent {
 
   register(): void {
     this.registerMessage = '';
+    const validationMessage = this.validateRegisterForm();
+    if (validationMessage) {
+      this.registerMessage = validationMessage;
+      return;
+    }
+
     const training_days = Object.entries(this.selectedTrainingDays)
       .filter(([, selected]) => selected)
       .map(([day]) => ({
@@ -304,44 +311,111 @@ export class AppComponent {
     this.http.post(`${this.apiUrl}/students`, {
       ...this.registerData,
       training_days
+    }, {
+      headers: { Authorization: `Bearer ${this.token}` }
     }).subscribe({
       next: () => {
-        this.registerMessage = 'Cadastro criado com sucesso.';
-        this.registerData = {
-          phone: '',
-          full_name: '',
-          age: 16,
-          birth_date: '',
-          cpf: '',
-          address: '',
-          neighborhood: '',
-          city: '',
-          modality: 'kid',
-          jiu_jitsu_start_date: '',
-          monthly_fee: 150,
-          payment_day: 10,
-          guardian_name: '',
-          guardian_relationship: '',
-          guardian_cpf: '',
-          guardian_phone: '',
-          guardian_secondary_phone: '',
-          medical_restriction: 'nao',
-          medical_restriction_description: ''
-        };
-        this.selectedTrainingDays = {
-          Segunda: true,
-          Terca: false,
-          Quarta: true,
-          Quinta: false,
-          Sexta: true,
-          Sabado: false
-        };
-        this.trainingTimes = { start_time: '19:00', end_time: '20:30' };
+        this.message = 'Cadastro criado com sucesso.';
+        this.closeRegisterModal();
+        this.resetRegisterForm();
+        this.loadAdminStudents();
       },
       error: (error) => {
-        this.registerMessage = error.error?.detail || 'Não foi possível cadastrar.';
+        this.registerMessage = this.errorMessage(error, 'Não foi possível cadastrar.');
       }
     });
+  }
+
+  private validateRegisterForm(): string {
+    const fullName = this.registerData.full_name.trim();
+    const age = Number(this.registerData.age);
+    const phoneDigits = this.onlyDigits(this.registerData.phone);
+    const guardianPhoneDigits = this.onlyDigits(this.registerData.guardian_phone);
+    const guardianSecondaryPhoneDigits = this.onlyDigits(this.registerData.guardian_secondary_phone);
+    const monthlyFee = Number(this.registerData.monthly_fee);
+    const paymentDay = Number(this.registerData.payment_day);
+    const hasSelectedTrainingDay = Object.values(this.selectedTrainingDays).some(Boolean);
+
+    if (fullName.length < 3) {
+      return 'Informe o nome completo do aluno.';
+    }
+    if (!Number.isFinite(age) || age < 4 || age > 100) {
+      return 'Informe uma idade válida entre 4 e 100 anos.';
+    }
+    if (this.registerData.phone && phoneDigits.length < 10) {
+      return 'O celular do aluno precisa ter DDD e número, ou pode ficar em branco.';
+    }
+    if (this.registerData.guardian_phone && guardianPhoneDigits.length < 10) {
+      return 'O telefone do responsável precisa ter DDD e número, ou pode ficar em branco.';
+    }
+    if (this.registerData.guardian_secondary_phone && guardianSecondaryPhoneDigits.length < 10) {
+      return 'O segundo telefone precisa ter DDD e número, ou pode ficar em branco.';
+    }
+    if (this.registerData.monthly_fee !== null && this.registerData.monthly_fee !== undefined && `${this.registerData.monthly_fee}` !== '' && (!Number.isFinite(monthlyFee) || monthlyFee < 0)) {
+      return 'A mensalidade precisa ser zero ou maior.';
+    }
+    if (this.registerData.payment_day !== null && this.registerData.payment_day !== undefined && `${this.registerData.payment_day}` !== '' && (!Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 31)) {
+      return 'O dia de pagamento precisa ficar entre 1 e 31.';
+    }
+    if (hasSelectedTrainingDay && (!this.trainingTimes.start_time || !this.trainingTimes.end_time)) {
+      return 'Informe entrada e saída dos treinos selecionados, ou desmarque os dias de treino.';
+    }
+    return '';
+  }
+
+  private onlyDigits(value: string): string {
+    return (value || '').replace(/\D/g, '');
+  }
+
+  private errorMessage(error: any, fallback: string): string {
+    const detail = error.error?.detail;
+    if (Array.isArray(detail)) {
+      return detail.map((item: { msg?: string }) => item.msg || 'Campo inválido.').join(' ');
+    }
+    return detail || fallback;
+  }
+
+  openRegisterModal(): void {
+    this.registerMessage = '';
+    this.showRegisterModal = true;
+  }
+
+  closeRegisterModal(): void {
+    this.showRegisterModal = false;
+    this.registerMessage = '';
+  }
+
+  private resetRegisterForm(): void {
+    this.registerData = {
+      phone: '',
+      full_name: '',
+      age: 16,
+      birth_date: '',
+      cpf: '',
+      address: '',
+      neighborhood: '',
+      city: '',
+      modality: 'kid',
+      jiu_jitsu_start_date: '',
+      monthly_fee: 150,
+      payment_day: 10,
+      guardian_name: '',
+      guardian_relationship: '',
+      guardian_cpf: '',
+      guardian_phone: '',
+      guardian_secondary_phone: '',
+      medical_restriction: 'nao',
+      medical_restriction_description: ''
+    };
+    this.selectedTrainingDays = {
+      Segunda: true,
+      Terca: false,
+      Quarta: true,
+      Quinta: false,
+      Sexta: true,
+      Sabado: false
+    };
+    this.trainingTimes = { start_time: '19:00', end_time: '20:30' };
   }
 
   login(): void {
@@ -453,11 +527,27 @@ export class AppComponent {
     this.cashFlowForm.category = this.cashFlowCategories[this.cashFlowForm.entry_type][0];
   }
 
+  displayValue(value?: string | number | null): string {
+    if (value === null || value === undefined || `${value}`.trim() === '') {
+      return 'Não informado';
+    }
+    return `${value}`;
+  }
+
   displayPhone(phone?: string): string {
-    if (!phone || phone.includes('@')) {
+    if (!phone || phone.trim() === '' || phone.includes('@')) {
       return 'Não informado';
     }
     return phone;
+  }
+
+  displayTrainingTime(training: TrainingDay): string {
+    const start = this.displayValue(training.start_time);
+    const end = this.displayValue(training.end_time);
+    if (start === 'Não informado' && end === 'Não informado') {
+      return 'Não informado';
+    }
+    return `${start} - ${end}`;
   }
 
   addTeacherSchedule(): void {
