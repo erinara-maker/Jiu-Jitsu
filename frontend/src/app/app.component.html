@@ -1,0 +1,842 @@
+<main class="page-shell">
+  <section class="hero">
+    <img src="logo.png" alt="CTC - Centro de Treinamento Canoa" class="hero-logo">
+    <div>
+      <p class="eyebrow" style="color: var(--navy-400);">Canoa Quebrada · CE</p>
+      <h1>CTC</h1>
+      <p class="academy-name">Centro de Treinamento Canoa</p>
+      <p class="intro">Jiu-jitsu · Defesa pessoal · Disciplina</p>
+      <a class="hero-contact" [href]="academyWhatsappUrl" target="_blank" rel="noopener">
+        WhatsApp {{ academyWhatsapp }}
+      </a>
+    </div>
+  </section>
+
+  <p class="message" *ngIf="message">{{ message }}</p>
+
+  <ng-template #studentRegisterForm>
+    <form class="panel" (ngSubmit)="register()">
+      <h2>Cadastro do aluno</h2>
+
+      <label>
+        Celular com DDD
+        <input name="phone" type="tel" [(ngModel)]="registerData.phone" placeholder="85999999999">
+      </label>
+
+      <label>
+        Nome completo
+        <input name="full_name" [(ngModel)]="registerData.full_name" required>
+      </label>
+
+      <div class="two-columns">
+        <label>
+          Idade
+          <input name="age" type="number" [(ngModel)]="registerData.age" min="4" required>
+        </label>
+        <label>
+          Data de nascimento
+          <input name="birth_date" type="date" [(ngModel)]="registerData.birth_date" (change)="syncAgeFromBirthDate()">
+        </label>
+      </div>
+
+      <div class="two-columns">
+        <label>
+          CPF (se houver)
+          <input name="cpf" [(ngModel)]="registerData.cpf">
+        </label>
+        <label>
+          Modalidade
+          <select name="modality" [(ngModel)]="registerData.modality">
+            <option value="kid">Kid</option>
+            <option value="kid +">Kid +</option>
+            <option value="juvenil">Juvenil</option>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        Endereço
+        <input name="address" [(ngModel)]="registerData.address">
+      </label>
+
+      <div class="two-columns">
+        <label>
+          Bairro
+          <input name="neighborhood" [(ngModel)]="registerData.neighborhood">
+        </label>
+        <label>
+          Cidade
+          <input name="city" [(ngModel)]="registerData.city">
+        </label>
+      </div>
+
+      <div class="two-columns">
+        <label>
+          Ingresso no Jiu-Jitsu
+          <input name="jiu_jitsu_start_date" type="date" [(ngModel)]="registerData.jiu_jitsu_start_date">
+        </label>
+      </div>
+
+      <div class="two-columns">
+        <label>
+          Dia de pagamento
+          <input name="payment_day" type="number" [(ngModel)]="registerData.payment_day" min="1" max="31">
+        </label>
+      </div>
+
+      <div class="subsection" *ngIf="shouldShowGuardian()">
+        <h3>Informações do responsável</h3>
+        <label>
+          Nome do responsável
+          <input name="guardian_name" [(ngModel)]="registerData.guardian_name">
+        </label>
+        <div class="two-columns">
+          <label>
+            Parentesco
+            <input name="guardian_relationship" [(ngModel)]="registerData.guardian_relationship">
+          </label>
+          <label>
+            CPF do responsável
+            <input name="guardian_cpf" [(ngModel)]="registerData.guardian_cpf">
+          </label>
+        </div>
+        <label>
+          Telefone/WhatsApp do responsável
+          <input name="guardian_phone" type="tel" [(ngModel)]="registerData.guardian_phone">
+        </label>
+        <label>
+          Segundo telefone para contato
+          <input name="guardian_secondary_phone" type="tel" [(ngModel)]="registerData.guardian_secondary_phone">
+        </label>
+      </div>
+
+      <div class="subsection">
+        <h3>Informações importantes</h3>
+        <label>
+          Restrição médica ou problema de saúde
+          <select name="medical_restriction" [(ngModel)]="registerData.medical_restriction">
+            <option value="nao">Não</option>
+            <option value="sim">Sim</option>
+          </select>
+        </label>
+        <label *ngIf="registerData.medical_restriction === 'sim'">
+          Especifique
+          <textarea
+            name="medical_restriction_description"
+            [(ngModel)]="registerData.medical_restriction_description"
+            placeholder="Descreva a restrição médica ou problema de saúde"
+          ></textarea>
+        </label>
+      </div>
+
+      <label>
+        Mensalidade
+        <input name="monthly_fee" type="number" [(ngModel)]="registerData.monthly_fee" min="0">
+      </label>
+
+      <div>
+        <p class="field-title">Dias de treino</p>
+        <div class="day-grid">
+          <label *ngFor="let item of selectedTrainingDays | keyvalue" class="check-pill">
+            <input type="checkbox" [name]="item.key" [(ngModel)]="selectedTrainingDays[item.key]">
+            {{ item.key }}
+          </label>
+        </div>
+      </div>
+
+      <div class="two-columns">
+        <label>
+          Entrada
+          <input name="start_time" type="time" [(ngModel)]="trainingTimes.start_time">
+        </label>
+        <label>
+          Saída
+          <input name="end_time" type="time" [(ngModel)]="trainingTimes.end_time">
+        </label>
+      </div>
+
+      <p class="message" *ngIf="registerMessage">{{ registerMessage }}</p>
+      <button type="submit">Criar cadastro</button>
+    </form>
+  </ng-template>
+
+  <section class="auth-grid login-only" *ngIf="!profile && userRole !== 'admin'">
+    <form class="panel compact" (ngSubmit)="login()">
+      <h2>Acesso administrativo</h2>
+      <label>
+        Usuário
+        <input name="login_username" [(ngModel)]="loginData.username" required>
+      </label>
+      <label>
+        Senha
+        <input name="login_password" type="password" [(ngModel)]="loginData.password" required>
+      </label>
+      <p class="hint">Acesso exclusivo da equipe.</p>
+      <button type="submit">Entrar</button>
+    </form>
+  </section>
+
+  <section class="dashboard" *ngIf="userRole === 'admin'">
+    <div class="toolbar">
+      <div>
+        <p class="eyebrow">Administração</p>
+        <h2>Área dos professores</h2>
+      </div>
+      <div class="toolbar-actions">
+        <button class="ghost" type="button" (click)="logout()">Sair</button>
+      </div>
+    </div>
+
+    <nav class="admin-nav">
+      <button type="button" [class.admin-nav-active]="activeSection === 'alunos'" (click)="activeSection = 'alunos'">Alunos</button>
+      <button type="button" [class.admin-nav-active]="activeSection === 'caixa'" (click)="activeSection = 'caixa'">Caixa</button>
+      <button type="button" [class.admin-nav-active]="activeSection === 'professores'" (click)="activeSection = 'professores'">Professores</button>
+    </nav>
+
+    <ng-container *ngIf="activeSection === 'alunos'">
+    <article class="panel">
+      <div class="panel-title-row">
+        <h3>Alunos cadastrados</h3>
+        <button type="button" (click)="openRegisterModal()">Cadastrar aluno</button>
+      </div>
+      <div class="cash-flow-filter">
+        <label>
+          Mês
+          <input name="admin_month" type="month" [(ngModel)]="adminMonth" (change)="loadAdminStudents()">
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>N.</th>
+              <th>Aluno</th>
+              <th>Celular</th>
+              <th>Modalidade</th>
+              <th>Mensalidade</th>
+              <th>Vencimento</th>
+              <th>Status {{ formatYearMonth(adminMonth) }}</th>
+              <th>Inadimplência anterior</th>
+              <th>Termo</th>
+              <th>Bolsa</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let student of pagedStudents">
+              <td>{{ student.student_number }}</td>
+              <td>
+                <button class="link-button" type="button" (click)="openStudentDetails(student.id)">
+                  {{ student.full_name }}
+                </button>
+              </td>
+              <td>{{ displayPhone(student.phone) }}</td>
+              <td>{{ formatModality(student.modality) }}</td>
+              <td>R$ {{ student.monthly_fee }}</td>
+              <td [class.due-soon]="paymentDueState(student) === 'soon'" [class.due-overdue]="paymentDueState(student) === 'overdue'">Dia {{ student.payment_day }}</td>
+              <td>
+                <button
+                  class="status-toggle"
+                  [class.paid]="student.payment_status === 'pago'"
+                  [class.pending]="student.payment_status === 'pendente'"
+                  type="button"
+                  (click)="toggleMonthlyPayment(student)">
+                  {{ student.payment_status }}
+                </button>
+              </td>
+              <td>
+                <span *ngIf="student.delinquent_months.length" class="delinquent-months">
+                  {{ student.delinquent_months.map(formatYearMonth).join(', ') }}
+                </span>
+                <span *ngIf="!student.delinquent_months.length" class="text-muted">—</span>
+              </td>
+              <td>{{ formatOption(student.authorization_signed) }}</td>
+              <td>{{ formatOption(student.scholarship_type) }}</td>
+              <td class="actions-cell">
+                <button class="bell-btn small" type="button" title="Enviar lembrete" (click)="openReminderModal(student)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                </button>
+                <button class="trash-btn small" type="button" title="Excluir aluno" (click)="deleteStudent(student)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" *ngIf="totalStudentsPages > 1">
+        <button class="ghost small" type="button" [disabled]="studentsPage === 1" (click)="studentsPage = studentsPage - 1">‹</button>
+        <button
+          *ngFor="let p of studentsPageNumbers()"
+          class="ghost small"
+          [class.page-active]="p === studentsPage"
+          type="button"
+          (click)="studentsPage = p">{{ p }}</button>
+        <button class="ghost small" type="button" [disabled]="studentsPage === totalStudentsPages" (click)="studentsPage = studentsPage + 1">›</button>
+        <span class="page-info">{{ adminStudents.length }} alunos</span>
+      </div>
+    </article>
+
+    <article class="panel">
+      <h3>Alunos que foram e não voltaram</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>N.</th>
+              <th>Aluno</th>
+              <th>Celular</th>
+              <th>Modalidade</th>
+              <th>Data</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let student of pagedDropouts">
+              <td>{{ student.student_number }}</td>
+              <td>{{ student.full_name }}</td>
+              <td>{{ displayPhone(student.phone) }}</td>
+              <td>{{ formatModality(student.modality) }}</td>
+              <td>{{ student.dropout_date }}</td>
+              <td><button class="ghost small" type="button" (click)="reactivateStudent(student)">Reativar</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" *ngIf="totalDropoutsPages > 1">
+        <button class="ghost small" type="button" [disabled]="dropoutsPage === 1" (click)="dropoutsPage = dropoutsPage - 1">‹</button>
+        <button
+          *ngFor="let p of dropoutsPageNumbers()"
+          class="ghost small"
+          [class.page-active]="p === dropoutsPage"
+          type="button"
+          (click)="dropoutsPage = p">{{ p }}</button>
+        <button class="ghost small" type="button" [disabled]="dropoutsPage === totalDropoutsPages" (click)="dropoutsPage = dropoutsPage + 1">›</button>
+        <span class="page-info">{{ dropoutStudents.length }} alunos</span>
+      </div>
+    </article>
+
+    <div class="modal-backdrop" *ngIf="showRegisterModal" (click)="closeRegisterModal()">
+      <div class="modal-box modal-student modal-register" (click)="$event.stopPropagation()">
+        <ng-container *ngTemplateOutlet="studentRegisterForm"></ng-container>
+        <button class="ghost modal-close" type="button" (click)="closeRegisterModal()">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- Modal lembrete -->
+    <div class="modal-backdrop" *ngIf="reminderStudent" (click)="closeReminderModal()">
+      <div class="modal-box" (click)="$event.stopPropagation()">
+        <p class="eyebrow">Lembrete de pagamento</p>
+        <h3>{{ reminderStudent.full_name }}</h3>
+        <p class="modal-hint">Escolha o tipo de lembrete. O WhatsApp será aberto com a mensagem pronta.</p>
+        <div class="modal-actions">
+          <button type="button" (click)="sendReminder('before')">Lembrar 1 dia antes</button>
+          <button type="button" (click)="sendReminder('due')">Vencimento hoje</button>
+        </div>
+        <button class="ghost modal-close" type="button" (click)="closeReminderModal()">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" *ngIf="selectedStudent" (click)="closeStudentDetails()">
+      <div class="modal-box modal-student" (click)="$event.stopPropagation()">
+        <article class="panel student-details">
+      <div class="detail-header">
+        <div>
+          <p class="eyebrow">Aluno selecionado</p>
+          <h3>{{ displayValue(selectedStudent.full_name) }}</h3>
+        </div>
+        <div class="toolbar-actions">
+          <button class="ghost" type="button" *ngIf="!editingStudent" (click)="startEditStudent()">Editar</button>
+          <button class="ghost" type="button" (click)="closeStudentDetails()">Fechar</button>
+        </div>
+      </div>
+
+      <!-- Modo visualização -->
+      <ng-container *ngIf="!editingStudent">
+        <div class="detail-grid">
+          <p><strong>N.:</strong> {{ selectedStudent.student_number }}</p>
+          <p><strong>Celular/WhatsApp:</strong> {{ displayPhone(selectedStudent.phone) }}</p>
+          <p><strong>Idade:</strong> {{ selectedStudent.age }} anos</p>
+          <p><strong>Data de nascimento:</strong> {{ displayValue(selectedStudent.birth_date) }}</p>
+          <p><strong>CPF:</strong> {{ displayValue(selectedStudent.cpf) }}</p>
+          <p><strong>Modalidade:</strong> {{ displayValue(formatModality(selectedStudent.modality)) }}</p>
+          <p><strong>Ingresso no Jiu-Jitsu:</strong> {{ displayValue(selectedStudent.jiu_jitsu_start_date) }}</p>
+          <p><strong>Status financeiro:</strong> {{ displayValue(selectedStudent.payment_status) }}</p>
+          <p><strong>Endereço:</strong> {{ displayValue(selectedStudent.address) }}</p>
+          <p><strong>Bairro:</strong> {{ displayValue(selectedStudent.neighborhood) }}</p>
+          <p><strong>Cidade:</strong> {{ displayValue(selectedStudent.city) }}</p>
+          <p><strong>Restrição médica:</strong> {{ formatOption(selectedStudent.medical_info.has_restriction || 'nao') }}</p>
+          <p><strong>Descrição:</strong> {{ displayValue(selectedStudent.medical_info.description) }}</p>
+        </div>
+
+        <div class="detail-grid" *ngIf="selectedStudent.age < 18">
+          <p><strong>Responsável:</strong> {{ displayValue(selectedStudent.guardian.name) }}</p>
+          <p><strong>Parentesco:</strong> {{ displayValue(selectedStudent.guardian.relationship) }}</p>
+          <p><strong>CPF do responsável:</strong> {{ displayValue(selectedStudent.guardian.cpf) }}</p>
+          <p><strong>Telefone/WhatsApp do responsável:</strong> {{ displayPhone(selectedStudent.guardian.phone) }}</p>
+          <p><strong>Segundo telefone:</strong> {{ displayPhone(selectedStudent.guardian.secondary_phone) }}</p>
+        </div>
+
+        <div class="admin-controls">
+          <label>
+            Termo de autorização assinado
+            <select name="authorization_signed" [(ngModel)]="selectedStudent.authorization_signed">
+              <option value="nao">Não</option>
+              <option value="sim">Sim</option>
+            </select>
+          </label>
+          <label>
+            Bolsa/desconto
+            <select name="scholarship_type" [(ngModel)]="selectedStudent.scholarship_type">
+              <option value="nao">Não</option>
+              <option value="sim">Sim</option>
+              <option value="bolsa parcial">Bolsa parcial</option>
+              <option value="com 2 filhos">Com 2 filhos</option>
+            </select>
+          </label>
+          <button type="button" (click)="saveStudentAdminInfo()">Salvar dados</button>
+          <button class="danger" type="button" (click)="markDropout(selectedStudent)">Marcar desistente</button>
+        </div>
+
+        <h4>Dias e horários de aula</h4>
+        <p class="hint" *ngIf="!selectedStudent.training_days.length">Não informado</p>
+        <div class="calendar compact-calendar" *ngIf="selectedStudent.training_days.length">
+          <div class="calendar-day" *ngFor="let training of selectedStudent.training_days">
+            <strong>{{ displayValue(training.day) }}</strong>
+            <span>{{ displayTrainingTime(training) }}</span>
+          </div>
+        </div>
+      </ng-container>
+
+      <!-- Modo edição -->
+      <form *ngIf="editingStudent" (ngSubmit)="saveStudentEdit()">
+        <div class="two-columns">
+          <label>
+            Celular com DDD
+            <input name="edit_phone" type="tel" [(ngModel)]="editData.phone" required>
+          </label>
+          <label>
+            Nome completo
+            <input name="edit_full_name" [(ngModel)]="editData.full_name" required>
+          </label>
+        </div>
+
+        <div class="two-columns">
+          <label>
+            Idade
+            <input name="edit_age" type="number" [(ngModel)]="editData.age" min="4" required>
+          </label>
+          <label>
+            Data de nascimento
+            <input name="edit_birth_date" type="date" [(ngModel)]="editData.birth_date" (change)="syncAgeFromBirthDateEdit()">
+          </label>
+        </div>
+
+        <div class="two-columns">
+          <label>
+            CPF
+            <input name="edit_cpf" [(ngModel)]="editData.cpf">
+          </label>
+          <label>
+            Modalidade
+            <select name="edit_modality" [(ngModel)]="editData.modality">
+              <option value="kid">Kid</option>
+              <option value="kid +">Kid +</option>
+              <option value="juvenil">Juvenil</option>
+              <option value="jiu-jitsu">Jiu-Jitsu</option>
+              <option value="jiu-jitsu feminino">Jiu-Jitsu feminino</option>
+              <option value="boxe">Boxe</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Endereço
+          <input name="edit_address" [(ngModel)]="editData.address">
+        </label>
+
+        <div class="two-columns">
+          <label>
+            Bairro
+            <input name="edit_neighborhood" [(ngModel)]="editData.neighborhood">
+          </label>
+          <label>
+            Cidade
+            <input name="edit_city" [(ngModel)]="editData.city">
+          </label>
+        </div>
+
+        <div class="two-columns">
+          <label>
+            Ingresso no Jiu-Jitsu
+            <input name="edit_jj_start" type="date" [(ngModel)]="editData.jiu_jitsu_start_date">
+          </label>
+          <label>
+            Dia de pagamento
+            <input name="edit_payment_day" type="number" [(ngModel)]="editData.payment_day" min="1" max="31" required>
+          </label>
+        </div>
+
+        <label>
+          Mensalidade
+          <input name="edit_monthly_fee" type="number" [(ngModel)]="editData.monthly_fee" min="1" required>
+        </label>
+
+        <div class="subsection" *ngIf="shouldShowGuardianEdit()">
+          <h3>Informações do responsável</h3>
+          <label>
+            Nome do responsável
+            <input name="edit_guardian_name" [(ngModel)]="editData.guardian_name">
+          </label>
+          <div class="two-columns">
+            <label>
+              Parentesco
+              <input name="edit_guardian_relationship" [(ngModel)]="editData.guardian_relationship">
+            </label>
+            <label>
+              CPF do responsável
+              <input name="edit_guardian_cpf" [(ngModel)]="editData.guardian_cpf">
+            </label>
+          </div>
+          <label>
+            Telefone/WhatsApp do responsável
+            <input name="edit_guardian_phone" type="tel" [(ngModel)]="editData.guardian_phone">
+          </label>
+          <label>
+            Segundo telefone para contato
+            <input name="edit_guardian_secondary_phone" type="tel" [(ngModel)]="editData.guardian_secondary_phone">
+          </label>
+        </div>
+
+        <div class="subsection">
+          <h3>Informações importantes</h3>
+          <label>
+            Restrição médica ou problema de saúde
+            <select name="edit_medical_restriction" [(ngModel)]="editData.medical_restriction">
+              <option value="nao">Não</option>
+              <option value="sim">Sim</option>
+            </select>
+          </label>
+          <label *ngIf="editData.medical_restriction === 'sim'">
+            Especifique
+            <textarea name="edit_medical_description" [(ngModel)]="editData.medical_restriction_description"></textarea>
+          </label>
+        </div>
+
+        <div>
+          <p class="field-title">Dias de treino</p>
+          <div class="day-grid">
+            <label *ngFor="let item of editTrainingDays | keyvalue" class="check-pill">
+              <input type="checkbox" [name]="'edit_day_' + item.key" [(ngModel)]="editTrainingDays[item.key]">
+              {{ item.key }}
+            </label>
+          </div>
+        </div>
+
+        <div class="two-columns">
+          <label>
+            Entrada
+            <input name="edit_start_time" type="time" [(ngModel)]="editTrainingTimes.start_time" required>
+          </label>
+          <label>
+            Saída
+            <input name="edit_end_time" type="time" [(ngModel)]="editTrainingTimes.end_time" required>
+          </label>
+        </div>
+
+        <div class="admin-controls">
+          <button type="submit">Salvar alterações</button>
+          <button class="ghost" type="button" (click)="cancelEditStudent()">Cancelar</button>
+        </div>
+      </form>
+        </article>
+      </div>
+    </div>
+
+    </ng-container>
+
+    <ng-container *ngIf="activeSection === 'caixa'">
+    <article class="panel">
+      <h3>Fluxo de caixa</h3>
+      <div class="cash-flow-filter">
+        <label>
+          Mês
+          <input name="cash_flow_month" type="month" [(ngModel)]="cashFlowMonth" (change)="loadCashFlow()">
+        </label>
+      </div>
+      <div class="cash-summary">
+        <div>
+          <p class="field-title">Entradas</p>
+          <strong>{{ formatMoney(cashFlowSummary.income) }}</strong>
+        </div>
+        <div>
+          <p class="field-title">Saídas</p>
+          <strong>{{ formatMoney(cashFlowSummary.expense) }}</strong>
+        </div>
+        <div>
+          <p class="field-title">Saldo</p>
+          <strong>{{ formatMoney(cashFlowSummary.balance) }}</strong>
+        </div>
+      </div>
+
+      <form class="cash-flow-form" (ngSubmit)="createCashFlowEntry()">
+        <label>
+          Tipo
+          <select name="cash_entry_type" [(ngModel)]="cashFlowForm.entry_type" (change)="onCashFlowTypeChange()">
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saída</option>
+          </select>
+        </label>
+        <label>
+          Descrição
+          <input name="cash_description" [(ngModel)]="cashFlowForm.description" required>
+        </label>
+        <label>
+          Categoria
+          <select name="cash_category" [(ngModel)]="cashFlowForm.category">
+            <option *ngFor="let category of cashFlowCategories[cashFlowForm.entry_type]" [value]="category">
+              {{ category }}
+            </option>
+          </select>
+        </label>
+        <label>
+          Forma de pagamento
+          <select name="cash_payment_method" [(ngModel)]="cashFlowForm.payment_method">
+            <option value="pix">Pix</option>
+            <option value="dinheiro">Dinheiro</option>
+            <option value="cartao">Cartão</option>
+            <option value="transferencia">Transferência</option>
+            <option value="outro">Outro</option>
+          </select>
+        </label>
+        <label>
+          Valor
+          <input name="cash_amount" type="number" [(ngModel)]="cashFlowForm.amount" min="0.01" step="0.01" required>
+        </label>
+        <label>
+          Data
+          <input name="cash_entry_date" type="date" [(ngModel)]="cashFlowForm.entry_date" required>
+        </label>
+        <label class="full-row">
+          Observação
+          <textarea name="cash_notes" [(ngModel)]="cashFlowForm.notes" placeholder="Ex.: referente ao aluguel de maio"></textarea>
+        </label>
+        <button type="submit">Registrar lançamento</button>
+      </form>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Tipo</th>
+              <th>Descrição</th>
+              <th>Categoria</th>
+              <th>Pagamento</th>
+              <th>Valor</th>
+              <th>Observação</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let entry of cashFlowEntries">
+              <td>{{ entry.entry_date }}</td>
+              <td>
+                <span class="status-badge" [class.paid]="entry.entry_type === 'entrada'" [class.pending]="entry.entry_type === 'saida'">
+                  {{ formatCashFlowType(entry.entry_type) }}
+                </span>
+              </td>
+              <td>{{ entry.description }}</td>
+              <td>{{ entry.category }}</td>
+              <td>{{ formatPaymentMethod(entry.payment_method) }}</td>
+              <td>{{ formatMoney(entry.amount) }}</td>
+              <td>{{ entry.notes || '-' }}</td>
+              <td>
+                <button class="danger small" type="button" (click)="deleteCashFlowEntry(entry)">Excluir</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    </ng-container>
+
+    <ng-container *ngIf="activeSection === 'professores'">
+    <article class="panel">
+      <h3>Cadastro de professor</h3>
+      <form class="teacher-form" (ngSubmit)="createTeacher()">
+        <label>
+          Nome
+          <input name="teacher_name" [(ngModel)]="teacherForm.name" required>
+        </label>
+        <label>
+          CPF
+          <input name="teacher_cpf" [(ngModel)]="teacherForm.cpf">
+        </label>
+        <label>
+          Telefone/WhatsApp
+          <input name="teacher_phone" type="tel" [(ngModel)]="teacherForm.phone" required>
+        </label>
+        <label>
+          Modalidade
+          <select name="teacher_class_group" [(ngModel)]="teacherForm.class_group">
+            <option value="jiu-jitsu">Jiu-Jitsu</option>
+            <option value="jiu-jitsu feminino">Jiu-Jitsu feminino</option>
+            <option value="boxe">Boxe</option>
+          </select>
+        </label>
+
+        <div class="schedule-editor">
+          <div class="schedule-row" *ngFor="let schedule of teacherForm.schedule; let index = index">
+            <label>
+              Dia
+              <select [name]="'teacher_day_' + index" [(ngModel)]="schedule.day">
+                <option>Segunda</option>
+                <option>Terça</option>
+                <option>Quarta</option>
+                <option>Quinta</option>
+                <option>Sexta</option>
+                <option>Sábado</option>
+              </select>
+            </label>
+            <label>
+              Início
+              <input [name]="'teacher_start_time_' + index" type="time" [(ngModel)]="schedule.start_time" required>
+            </label>
+            <label>
+              Fim
+              <input [name]="'teacher_end_time_' + index" type="time" [(ngModel)]="schedule.end_time" required>
+            </label>
+            <button class="ghost small" type="button" (click)="removeTeacherSchedule(index)">Remover</button>
+          </div>
+          <button class="ghost" type="button" (click)="addTeacherSchedule()">Adicionar horário</button>
+        </div>
+
+        <button type="submit">Cadastrar professor</button>
+      </form>
+    </article>
+
+    <article class="panel">
+      <h3>Professores cadastrados</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Professor</th>
+              <th>Telefone</th>
+              <th>Modalidade</th>
+              <th>Horários</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let teacher of teachers">
+              <td>
+                <button class="link-button" type="button" (click)="openTeacherDetails(teacher)">
+                  {{ teacher.name }}
+                </button>
+              </td>
+              <td>{{ displayPhone(teacher.phone) }}</td>
+              <td>{{ formatModality(teacher.class_group) }}</td>
+              <td>
+                <span *ngFor="let schedule of teacher.schedule">
+                  {{ schedule.day }} {{ schedule.start_time }} - {{ schedule.end_time }}
+                </span>
+              </td>
+              <td><button class="danger small" type="button" (click)="deleteTeacher(teacher)">Excluir</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="teacher-details" *ngIf="selectedTeacher">
+        <div class="detail-header">
+          <div>
+            <p class="eyebrow">Professor selecionado</p>
+            <h3>{{ selectedTeacher.name }}</h3>
+          </div>
+          <button class="ghost" type="button" (click)="closeTeacherDetails()">Fechar</button>
+        </div>
+        <div class="detail-grid">
+          <p><strong>Nome:</strong> {{ selectedTeacher.name }}</p>
+          <p><strong>CPF:</strong> {{ selectedTeacher.cpf || 'Não informado' }}</p>
+          <p><strong>Modalidade:</strong> {{ formatModality(selectedTeacher.class_group) }}</p>
+          <p><strong>Telefone/WhatsApp:</strong> {{ displayPhone(selectedTeacher.phone) }}</p>
+        </div>
+        <h4>Dias e horários de aula</h4>
+        <div class="calendar compact-calendar">
+          <div class="calendar-day" *ngFor="let schedule of selectedTeacher.schedule">
+            <strong>{{ schedule.day }}</strong>
+            <span>{{ schedule.start_time }} - {{ schedule.end_time }}</span>
+          </div>
+        </div>
+      </div>
+    </article>
+    </ng-container>
+
+  </section>
+
+  <section class="dashboard" *ngIf="profile && userRole !== 'admin'">
+    <div class="toolbar">
+      <div>
+        <p class="eyebrow">Perfil do atleta</p>
+        <h2>{{ profile.full_name }}</h2>
+      </div>
+      <button class="ghost" type="button" (click)="logout()">Sair</button>
+    </div>
+
+    <div class="summary-grid">
+      <article class="panel">
+        <h3>Dados do aluno</h3>
+        <p><strong>N.:</strong> {{ profile.student_number }}</p>
+        <p><strong>Celular:</strong> {{ profile.phone }}</p>
+        <p><strong>Idade:</strong> {{ profile.age }} anos</p>
+        <p><strong>Modalidade:</strong> {{ formatModality(profile.modality) }}</p>
+      </article>
+
+      <article class="panel">
+        <h3>Financeiro</h3>
+        <p><strong>Mensalidade:</strong> R$ {{ profile.monthly_fee }}</p>
+        <p><strong>Vencimento:</strong> dia {{ profile.payment_day }}</p>
+        <p><strong>Status:</strong> {{ profile.payment_status }}</p>
+        <p><strong>WhatsApp da academia:</strong> <a [href]="academyWhatsappUrl" target="_blank" rel="noopener">{{ academyWhatsapp }}</a></p>
+      </article>
+
+      <article class="panel payment-panel">
+        <h3>Pagamento Pix</h3>
+        <div class="pix-row">
+          <p class="pix-key">{{ profile.pix_key }}</p>
+          <button class="copy-button" type="button" (click)="copyPixKey()">Copiar</button>
+        </div>
+        <p class="hint">⚡ O lembrete é enviado automaticamente no dia do vencimento quando a mensalidade está pendente.</p>
+      </article>
+    </div>
+
+    <article class="panel authorization-term">
+      <h3>Termo de autorização e responsabilidade</h3>
+      <p>
+        O responsável legal autoriza a participação do aluno menor de idade nas atividades promovidas pelo
+        Centro de Treinamento Canoa e declara estar ciente da natureza do Jiu-Jitsu e de outras artes marciais,
+        seus benefícios educacionais, esportivos e sociais, bem como dos riscos inerentes à prática esportiva.
+      </p>
+      <p>
+        O responsável reconhece que artes marciais envolvem contato físico e podem ocasionar lesões leves ou
+        graves, assumindo responsabilidade pelas eventualidades relacionadas às aulas, treinos e eventos.
+      </p>
+    </article>
+
+    <article class="panel">
+      <h3>Calendário de treino</h3>
+      <div class="calendar">
+        <div class="calendar-day muted">
+          <strong>Domingo</strong>
+          <span>Descanso</span>
+        </div>
+        <div class="calendar-day" *ngFor="let training of profile.training_days">
+          <strong>{{ training.day }}</strong>
+          <span>{{ training.start_time }} - {{ training.end_time }}</span>
+        </div>
+      </div>
+    </article>
+  </section>
+</main>

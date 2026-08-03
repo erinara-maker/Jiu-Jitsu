@@ -1,0 +1,42 @@
+{
+  "students": [
+    {
+      "username": "usuario",
+      "email": "naramoreiranara@outlook.com",
+      "full_name": "Usuário 1",
+      "age": 16,
+      "monthly_fee": 150.0,
+      "payment_day": 10,
+      "training_days": [
+        {
+          "day": "Segunda",
+          "start_time": "19:00",
+          "end_time": "20:30"
+        },
+        {
+          "day": "Quarta",
+          "start_time": "19:00",
+          "end_time": "20:30"
+        },
+        {
+          "day": "Sexta",
+          "start_time": "19:00",
+          "end_time": "20:30"
+        }
+      ],
+      "password_hash": "0763e292aed31b14015b84df2312a96ffb43ee687bfdc89fd5458e42059da8e0",
+      "payment_status": "pago"
+    }
+  ],
+  "tokens": {
+    "d36a2c023205130e58b53245aa7547390f585d49081932c3": "usuario"
+  },
+  "payments": [
+    {
+      "username": "usuario",
+      "amount": 150.0,
+      "paid_at": "2026-04-30T16:58:02",
+      "method": "pix"
+    }
+  ]
+}
